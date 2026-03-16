@@ -4,21 +4,20 @@ Config-driven multi-step form component library for Svelte 5. Define your entire
 
 Built with SvelteKit, TypeScript, and Tailwind CSS v4.
 
-## Quick start
+## Installation
 
 ```sh
-npm install
-npm run dev
+npm install github:alexpetroni/gneneral-form-comp
 ```
 
-Visit `http://localhost:5173` to see the demo form.
+**Prerequisite:** Your Svelte project must have [Tailwind CSS v4](https://tailwindcss.com/docs/installation/using-vite) configured, since the components use Tailwind utility classes.
 
 ## Usage
 
 ```svelte
 <script lang="ts">
-  import { MultiStepForm } from '$lib/index.js';
-  import type { FormConfig, FormCallbacks } from '$lib/types.js';
+  import { MultiStepForm } from 'formcomp';
+  import type { FormConfig, FormCallbacks } from 'formcomp';
 
   const config: FormConfig = {
     steps: [
@@ -54,6 +53,19 @@ Visit `http://localhost:5173` to see the demo form.
 <MultiStepForm {config} {callbacks} />
 ```
 
+### Development
+
+To run the demo/dev sandbox locally:
+
+```sh
+git clone git@github.com:alexpetroni/gneneral-form-comp.git
+cd gneneral-form-comp
+npm install
+npm run dev
+```
+
+Visit `http://localhost:5173` to see the demo form.
+
 ### Props
 
 | Prop | Type | Description |
@@ -78,7 +90,7 @@ interface FormCallbacks {
 The built-in state manager persists responses to sessionStorage by default:
 
 ```ts
-import { createFormState } from '$lib/index.js';
+import { createFormState } from 'formcomp';
 
 const state = createFormState(config, {
   persist: 'localStorage',  // 'sessionStorage' (default) | 'localStorage' | false
@@ -523,7 +535,12 @@ src/routes/
 
 ## Exports
 
-Everything is available from `$lib/index.js`:
+Everything is available from `'formcomp'`:
+
+```ts
+import { MultiStepForm, createFormState, evaluateCondition, validateStep } from 'formcomp';
+import type { FormConfig, Question, Condition } from 'formcomp';
+```
 
 - **Components**: `MultiStepForm`, `FormStep`, `QuestionRenderer`, `GroupRenderer`, all 9 input components, all 4 layout components
 - **State**: `createFormState`
