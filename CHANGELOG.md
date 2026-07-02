@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.1 — 2026-07-02
+
+### Added
+
+- **`customized` example** (Settings & styling): every `FormSettings` label and message, summary customization (`summaryLabel` / `editLabel`), submit error handling, and `class` / `optionClass` styling hooks at all config levels.
+- **`kiosk` example** (linear flow): `showProgress: false` + `allowBackNavigation: false`.
+- `conditional` example now also demonstrates the `greater-than` and `answered` operators and `inputType: 'email'`.
+- README: i18n section with `translate` wiring, `success` snippet documented in the props table, feature-indexed examples table.
+- Browser tests for the two new examples, including the `invalidMessage` path via an inverted range.
+
+### Fixed
+
+- Props table typed the `state` prop as `FormStateAdapter`; it is `FormStateController`.
+
 ## 0.2.0 — 2026-07-02
 
 ### Added
