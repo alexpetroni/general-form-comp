@@ -110,14 +110,42 @@ export const conditionalConfig: FormConfig = {
 					]
 				},
 				{
+					id: 'splurge',
+					label: 'Splurge',
+					// Numeric operator: the scale above stores a NUMBER, so compare
+					// with a number (value: 3, not '3')
+					condition: { questionId: 'budget', operator: 'greater-than', value: 3 },
+					questions: [
+						{
+							id: 'splurge_on',
+							type: 'text-input',
+							label: 'With a flexible budget — what would you splurge on?',
+							placeholder: 'e.g. business class, a nicer hotel…'
+						}
+					]
+				},
+				{
 					id: 'contact',
 					label: 'Email',
 					questions: [
 						{
 							id: 'email',
 							type: 'text-input',
+							inputType: 'email',
 							label: 'Email (optional)',
 							placeholder: 'you@example.com'
+						},
+						{
+							id: 'newsletter_topics',
+							type: 'multi-select',
+							label: 'Which topics should we email you about?',
+							// 'answered' needs no value — shown once the email field is filled
+							condition: { questionId: 'email', operator: 'answered' },
+							options: [
+								{ value: 'deals', label: 'Deals' },
+								{ value: 'guides', label: 'Destination guides' },
+								{ value: 'news', label: 'Travel news' }
+							]
 						}
 					]
 				}

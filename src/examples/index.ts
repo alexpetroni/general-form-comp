@@ -4,6 +4,8 @@ import { minimalConfig } from './minimal.js';
 import { conditionalConfig } from './conditional.js';
 import { likertConfig } from './likert.js';
 import { allInputsConfig } from './all-inputs.js';
+import { customizedConfig } from './customized.js';
+import { kioskConfig } from './kiosk.js';
 import { sleepAssessmentConfig } from './sleep-assessment.js';
 
 export interface Example {
@@ -17,13 +19,13 @@ export const examples: Example[] = [
 	{
 		slug: 'minimal',
 		title: 'Minimal form',
-		description: 'The smallest useful form — a single step with a text input and a textarea.',
+		description: 'The smallest useful form — plus result submission: uuid-keyed POST payload, success screen, error handling.',
 		config: minimalConfig
 	},
 	{
 		slug: 'conditional',
 		title: 'Conditional logic',
-		description: 'Questions and groups that show/hide based on previous answers (AND, OR, cross-step).',
+		description: 'Show/hide questions, groups, and whole steps: AND/OR, cross-step, numeric (greater-than) and answered operators.',
 		config: conditionalConfig
 	},
 	{
@@ -35,8 +37,20 @@ export const examples: Example[] = [
 	{
 		slug: 'all-inputs',
 		title: 'All input types',
-		description: 'Showcase of every built-in input: text, textarea, single/multi-select, scale, time, number.',
+		description: 'Every built-in input — text, email, textarea, selects, scale, range, time, date — plus tooltips and the summary screen.',
 		config: allInputsConfig
+	},
+	{
+		slug: 'customized',
+		title: 'Settings & styling',
+		description: 'Custom button labels, validation messages, summary texts, submit error handling, and class hooks at every level.',
+		config: customizedConfig
+	},
+	{
+		slug: 'kiosk',
+		title: 'Kiosk (linear flow)',
+		description: 'No progress header, no going back: showProgress and allowBackNavigation turned off.',
+		config: kioskConfig
 	},
 	{
 		slug: 'sleep-assessment',
@@ -55,5 +69,7 @@ export {
 	conditionalConfig,
 	likertConfig,
 	allInputsConfig,
+	customizedConfig,
+	kioskConfig,
 	sleepAssessmentConfig
 };

@@ -92,10 +92,12 @@ Ready-to-run `FormConfig` objects live in the `./src/examples/` directory. Each 
 
 | Slug | File | What it shows |
 |------|------|---------------|
-| `minimal` | `src/examples/minimal.ts` | Smallest useful form: text input + textarea. |
-| `conditional` | `src/examples/conditional.ts` | `and`/`or` conditions and cross-step visibility. |
+| `minimal` | `src/examples/minimal.ts` | Smallest useful form, plus result submission: `submit` config, question `uuid`s, success screen, error handling. |
+| `conditional` | `src/examples/conditional.ts` | `and`/`or` conditions, cross-step visibility, step-level skipping, `greater-than` and `answered` operators. |
 | `likert` | `src/examples/likert.ts` | A `likert-batch` group with a shared option set. |
-| `all-inputs` | `src/examples/all-inputs.ts` | Every built-in input type in one form. |
+| `all-inputs` | `src/examples/all-inputs.ts` | Every built-in input type, `tooltip`, `inputType: 'email'`, group `intro`, and the summary screen. |
+| `customized` | `src/examples/customized.ts` | All `settings` labels/messages, summary customization, and `class`/`optionClass` styling hooks. |
+| `kiosk` | `src/examples/kiosk.ts` | Linear one-way flow: `showProgress: false`, `allowBackNavigation: false`. |
 | `sleep-assessment` | `src/examples/sleep-assessment.ts` | Larger three-step form combining everything. |
 
 Drop a new `.ts` file into `./src/examples/`, add it to `src/examples/index.ts`, and it will show up in the `/examples` gallery automatically.
@@ -106,8 +108,28 @@ Drop a new `.ts` file into `./src/examples/`, add it to `src/examples/index.ts`,
 |------|------|-------------|
 | `config` | `FormConfig` | The form configuration object (required). Captured once at mount — to swap configs at runtime, re-create the component with `{#key}`. |
 | `translate` | `TranslateFn` | Optional `(key, params?) => string` for i18n. When provided, all `label` fields are treated as translation keys. When omitted, labels render as-is. |
-| `state` | `FormStateAdapter` | Optional external state adapter. If omitted, an internal one is created with sessionStorage persistence. |
+| `state` | `FormStateController` | Optional external state controller (`FormStateAdapter` + step navigation). If omitted, an internal one is created with sessionStorage persistence. |
 | `callbacks` | `FormCallbacks` | Optional lifecycle callbacks. |
+| `success` | `Snippet<[SubmitPayload, unknown]>` | Optional custom success screen rendered after a successful POST (see "Submitting results"). |
+
+### i18n
+
+Pass a `translate` function and *every* string in the config — question and option labels, tooltips, intros, settings labels and messages — is treated as a translation key:
+
+```svelte
+<script>
+  import { t } from './my-i18n.js'; // svelte-i18n, paraglide, or your own
+
+  const config = {
+    settings: { nextLabel: 'form.next', submitLabel: 'form.submit' },
+    steps: [{ id: 's1', label: 'step.basics', groups: [/* label: 'q.name', … */] }]
+  };
+</script>
+
+<MultiStepForm {config} translate={(key) => t(key)} />
+```
+
+Without `translate`, all strings render as-is — plain-English configs need no setup. The built-in defaults ('Next', 'Back', 'Submit', validation and success messages) are also passed through `translate`, so provide keys via `settings` or translations for the default English strings.
 
 ### Callbacks
 

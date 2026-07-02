@@ -338,3 +338,46 @@ test('summary screen recaps answers, supports edit, and submits', async ({ page 
 	expect(payload.text).toMatchObject({ name: 'Ada Lovelace' });
 	expect(payload['numbers-and-time']).toMatchObject({ budget: { from: 2000, to: 3000 }, start_date: '2026-08-01' });
 });
+
+test('kiosk example: linear flow with no header and no back', async ({ page }) => {
+	await page.goto('/examples/kiosk');
+	await page.waitForLoadState('networkidle');
+
+	await expect(progress(page)).toBeHidden();
+	await page.locator('label').filter({ hasText: /^\s*5\s*$/ }).click();
+	await page.getByRole('button', { name: 'Continue' }).click();
+
+	await expect(page.getByRole('heading', { name: 'Question 2' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Previous|Back' })).toBeHidden();
+});
+
+test('customized example: custom labels and messages', async ({ page }) => {
+	await page.goto('/examples/customized');
+	await page.waitForLoadState('networkidle');
+
+	// Custom next label; custom requiredMessage on empty submit
+	await page.getByRole('button', { name: 'Continue' }).click();
+	await expect(page.getByRole('alert')).toContainText('A required answer is missing here.');
+
+	await page.locator('label').filter({ hasText: 'Playful' }).click();
+	await page.getByRole('button', { name: 'Continue' }).click();
+
+	// An inverted range (From > To) triggers the custom invalidMessage
+	await page.getByLabel('Team size').fill('50');
+	await page.getByLabel('At least').fill('300');
+	await page.getByLabel('At most').fill('100');
+	await page.getByRole('button', { name: 'Continue' }).click();
+	await expect(page.getByRole('alert')).toContainText('One of these values is out of the allowed range.');
+
+	await page.getByLabel('At most').fill('400');
+	await page.getByRole('button', { name: 'Continue' }).click();
+
+	// Summary with custom heading and edit label, then custom submit label
+	await expect(page.getByRole('heading', { name: 'Check your answers before sending' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Change' }).first()).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Send my answers' })).toBeVisible();
+
+	// The demo endpoint doesn't exist → custom submitErrorMessage appears
+	await page.getByRole('button', { name: 'Send my answers' }).click();
+	await expect(page.getByRole('alert')).toContainText('Could not reach the server');
+});
