@@ -7,7 +7,7 @@ Built with SvelteKit, TypeScript, and Tailwind CSS v4.
 ## Installation
 
 ```sh
-npm install github:alexpetroni/gneneral-form-comp
+npm install github:alexpetroni/general-form-comp
 ```
 
 **Prerequisite:** Your Svelte project must have [Tailwind CSS v4](https://tailwindcss.com/docs/installation/using-vite) configured, since the components use Tailwind utility classes.
@@ -68,8 +68,8 @@ Then in your app CSS, tell Tailwind to scan the library (v4 skips `node_modules`
 To run the demo/dev sandbox locally:
 
 ```sh
-git clone git@github.com:alexpetroni/gneneral-form-comp.git
-cd gneneral-form-comp
+git clone git@github.com:alexpetroni/general-form-comp.git
+cd general-form-comp
 npm install
 npm run dev
 ```
