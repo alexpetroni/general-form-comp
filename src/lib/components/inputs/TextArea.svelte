@@ -1,21 +1,24 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { TRANSLATE_KEY, type TranslateFn } from '../../types.js';
+	import { cn } from '../../utils.js';
+	import { inputBase, warningField } from '../../styles.js';
+	import { useTranslate } from '../../i18n.js';
+	import FieldLabel from './FieldLabel.svelte';
 
 	interface Props {
 		value?: string | undefined;
 		onchange?: (value: string) => void;
 		name?: string;
 		label?: string;
+		tooltip?: string;
 		placeholder?: string;
 		rows?: number;
 		warning?: boolean;
+		class?: string;
 	}
 
-	let { value = $bindable(), onchange, name = 'textarea', label, placeholder, rows = 4, warning = false }: Props = $props();
+	let { value = $bindable(), onchange, name = 'textarea', label, tooltip, placeholder, rows = 4, warning = false, class: className }: Props = $props();
 
-	const t = getContext<TranslateFn | undefined>(TRANSLATE_KEY);
-	const translate = (key: string) => t ? t(key) : key;
+	const translate = useTranslate();
 
 	function handleInput(e: Event) {
 		const el = e.target as HTMLTextAreaElement;
@@ -24,18 +27,17 @@
 	}
 </script>
 
-<div>
+<div class={cn('space-y-2', className)}>
 	{#if label}
-		<label for={name} class="block text-sm/6 font-medium text-gray-900">{translate(label)}</label>
+		<FieldLabel forId={name} text={label} {tooltip} />
 	{/if}
-	<div class="mt-2" class:ring-2={warning} class:ring-red-300={warning} class:rounded-md={warning}>
-		<textarea
-			{name}
-			id={name}
-			{rows}
-			{placeholder}
-			oninput={handleInput}
-			class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-		>{value ?? ''}</textarea>
-	</div>
+	<textarea
+		{name}
+		id={name}
+		{rows}
+		{placeholder}
+		value={value ?? ''}
+		oninput={handleInput}
+		class={cn(inputBase, 'min-h-16 resize-y', warning && warningField)}
+	></textarea>
 </div>

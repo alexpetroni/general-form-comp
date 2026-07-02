@@ -1,6 +1,9 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { TRANSLATE_KEY, type TranslateFn, type QuestionOption } from '../../types.js';
+	import type { QuestionOption } from '../../types.js';
+	import { cn } from '../../utils.js';
+	import { warningRing, controlBase } from '../../styles.js';
+	import { useTranslate } from '../../i18n.js';
+	import FieldLabel from './FieldLabel.svelte';
 
 	interface Props {
 		options: QuestionOption[];
@@ -8,22 +11,22 @@
 		onchange?: (value: string[]) => void;
 		name?: string;
 		label?: string;
+		tooltip?: string;
 		warning?: boolean;
+		class?: string;
+		optionClass?: string;
 	}
 
-	let { options, value = $bindable([]), onchange, name = 'checkbox', label, warning = false }: Props = $props();
+	let { options, value = $bindable([]), onchange, name = 'checkbox', label, tooltip, warning = false, class: className, optionClass }: Props = $props();
 
-	const t = getContext<TranslateFn | undefined>(TRANSLATE_KEY);
-	const translate = (key: string) => t ? t(key) : key;
+	const translate = useTranslate();
 
 	function handleToggle(optionValue: string, exclusive?: boolean) {
 		let next: string[];
 
 		if (exclusive) {
-			// Exclusive option: if already selected, deselect; otherwise select only this
 			next = value.includes(optionValue) ? [] : [optionValue];
 		} else {
-			// Remove any exclusive options first
 			const exclusiveValues = options.filter((o) => o.exclusive).map((o) => o.value);
 			const current = value.filter((v) => !exclusiveValues.includes(v));
 
@@ -39,32 +42,28 @@
 	}
 </script>
 
-<fieldset aria-label={label ? translate(label) : undefined}>
-	<div class="space-y-5" class:ring-2={warning} class:ring-red-300={warning} class:rounded-lg={warning} class:p-4={warning}>
+<fieldset class={className}>
+	{#if label}
+		<FieldLabel tag="legend" text={label} {tooltip} />
+	{/if}
+	<div class={cn('space-y-4 rounded-(--form-radius) p-1', warning && cn(warningRing, 'p-4'))}>
 		{#each options as option (option.value)}
 			{@const checked = value.includes(option.value)}
 			{@const id = `${name}-${option.value}`}
-			<div class="flex gap-3">
-				<div class="flex h-6 shrink-0 items-center">
-					<div class="group grid size-4 grid-cols-1">
-						<input
-							{id}
-							aria-describedby={option.description ? `${id}-desc` : undefined}
-							name="{name}[]"
-							type="checkbox"
-							{checked}
-							onchange={() => handleToggle(option.value, option.exclusive)}
-							class="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 forced-colors:appearance-auto"
-						/>
-						<svg class="pointer-events-none col-start-1 row-start-1 size-3.5 self-center justify-self-center stroke-white" viewBox="0 0 14 14" fill="none">
-							<path class="opacity-0 group-has-checked:opacity-100" d="M3 8L6 11L11 3.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-						</svg>
-					</div>
-				</div>
-				<div class="text-sm/6">
-					<label for={id} class="font-medium text-gray-900">{translate(option.label)}</label>
+			<div class={cn('flex items-start gap-3', optionClass)}>
+				<input
+					type="checkbox"
+					{id}
+					{name}
+					value={option.value}
+					{checked}
+					onchange={() => handleToggle(option.value, option.exclusive)}
+					class={cn(controlBase, 'mt-0.5')}
+				/>
+				<div class="space-y-0.5">
+					<label for={id} class="font-medium text-sm cursor-pointer">{translate(option.label)}</label>
 					{#if option.description}
-						<p id="{id}-desc" class="text-gray-500">{translate(option.description)}</p>
+						<p class="text-sm text-(--form-muted)">{translate(option.description)}</p>
 					{/if}
 				</div>
 			</div>

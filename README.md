@@ -12,6 +12,16 @@ npm install github:alexpetroni/gneneral-form-comp
 
 **Prerequisite:** Your Svelte project must have [Tailwind CSS v4](https://tailwindcss.com/docs/installation/using-vite) configured, since the components use Tailwind utility classes.
 
+Then in your app CSS, tell Tailwind to scan the library (v4 skips `node_modules` by default) and import the theme tokens:
+
+```css
+@import 'tailwindcss';
+@import 'formcomp/theme.css';
+@source '../node_modules/formcomp/dist';
+```
+
+(Adjust the `@source` path so it is relative to your CSS file.)
+
 ## Usage
 
 ```svelte
@@ -64,13 +74,37 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:5173` to see the demo form.
+Visit `http://localhost:5173` to see the demo form, and `http://localhost:5173/examples` for the full example gallery.
+
+Unit tests (condition evaluator, validator, config checks) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation, summary, submission payload) run with Playwright against a production preview build:
+
+```sh
+npm run test:unit
+npx playwright install chromium   # once
+npm run test:e2e
+```
+
+Both run in CI on every push (`.github/workflows/ci.yml`).
+
+### Examples
+
+Ready-to-run `FormConfig` objects live in the `./src/examples/` directory. Each one is paired with a route under `/examples/<slug>`:
+
+| Slug | File | What it shows |
+|------|------|---------------|
+| `minimal` | `src/examples/minimal.ts` | Smallest useful form: text input + textarea. |
+| `conditional` | `src/examples/conditional.ts` | `and`/`or` conditions and cross-step visibility. |
+| `likert` | `src/examples/likert.ts` | A `likert-batch` group with a shared option set. |
+| `all-inputs` | `src/examples/all-inputs.ts` | Every built-in input type in one form. |
+| `sleep-assessment` | `src/examples/sleep-assessment.ts` | Larger three-step form combining everything. |
+
+Drop a new `.ts` file into `./src/examples/`, add it to `src/examples/index.ts`, and it will show up in the `/examples` gallery automatically.
 
 ### Props
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `config` | `FormConfig` | The form configuration object (required) |
+| `config` | `FormConfig` | The form configuration object (required). Captured once at mount — to swap configs at runtime, re-create the component with `{#key}`. |
 | `translate` | `TranslateFn` | Optional `(key, params?) => string` for i18n. When provided, all `label` fields are treated as translation keys. When omitted, labels render as-is. |
 | `state` | `FormStateAdapter` | Optional external state adapter. If omitted, an internal one is created with sessionStorage persistence. |
 | `callbacks` | `FormCallbacks` | Optional lifecycle callbacks. |
@@ -82,6 +116,8 @@ interface FormCallbacks {
   onStepComplete?: (stepId: string, stepIndex: number) => void;
   onFormComplete?: (allResponses: Record<string, Record<string, unknown>>) => void;
   onStepChange?: (fromIndex: number, toIndex: number) => void;
+  onSubmitSuccess?: (payload: SubmitPayload, response: unknown) => void; // after a 2xx POST
+  onSubmitError?: (error: unknown) => void;                              // network error or non-2xx
 }
 ```
 
@@ -95,7 +131,9 @@ import { createFormState } from 'formcomp';
 const state = createFormState(config, {
   persist: 'localStorage',  // 'sessionStorage' (default) | 'localStorage' | false
   storageKey: 'my-form',    // default: 'formcomp-state'
-  debounceMs: 500           // default: 300
+  debounceMs: 500,          // default: 300
+  version: 3                // bump when the config changes shape — persisted
+                            // state from other versions is discarded
 });
 ```
 
@@ -111,6 +149,59 @@ interface FormStateAdapter {
 
 ---
 
+## Styling & theming
+
+The components have **no dependency on any design system** — they are styled with Tailwind utilities driven by a small set of `--form-*` CSS variables, scoped to the `.formcomp` class that `MultiStepForm` renders on its root element.
+
+### Theme variables
+
+Override any of them in your own CSS to retheme the whole form:
+
+```css
+.formcomp {
+	--form-accent: oklch(0.55 0.2 150);   /* selected states, buttons, progress */
+	--form-accent-foreground: white;       /* text on accent surfaces */
+	--form-bg: white;                      /* input & card backgrounds */
+	--form-fg: #1a1a2e;                    /* base text color */
+	--form-muted: #6b7280;                 /* descriptions, secondary text */
+	--form-border: #e5e7eb;                /* borders & separators */
+	--form-error: #dc2626;                 /* validation warning ring */
+	--form-radius: 0.625rem;               /* corner radius */
+}
+```
+
+When using input components standalone (outside `MultiStepForm`), wrap them in an element with `class="formcomp"` so the variables apply.
+
+### Per-config class hooks
+
+Every level of the config accepts extra Tailwind classes, merged onto the defaults with `tailwind-merge` (so your classes win on conflict):
+
+```ts
+const config: FormConfig = {
+	class: 'max-w-2xl',                     // form root
+	steps: [{
+		id: 'basics',
+		label: 'Basics',
+		class: 'space-y-12',                  // step container
+		groups: [{
+			id: 'main',
+			label: 'Main',
+			class: 'rounded-xl border p-6',     // group wrapper
+			questions: [{
+				id: 'concern',
+				type: 'single-select',
+				label: 'Pick one',
+				class: 'md:col-span-2',           // question root
+				optionClass: 'border-dashed',     // each option (select-type questions)
+				options: [/* ... */]
+			}]
+		}]
+	}]
+};
+```
+
+Because the config lives in *your* project source, your Tailwind build scans it and generates whatever classes you use — no extra setup.
+
 ## Config format
 
 A form config is a tree: **FormConfig > StepConfig[] > QuestionGroup[] > Question[]**.
@@ -122,8 +213,36 @@ The root object.
 ```ts
 interface FormConfig {
   steps: StepConfig[];
+  settings?: FormSettings;
+  version?: string | number;  // config version: stamped into the payload, invalidates persisted answers
+  submit?: SubmitConfig;      // POST the results to an endpoint (see "Submitting results")
+  class?: string;   // extra Tailwind classes on the form root
 }
 ```
+
+### FormSettings
+
+Form-wide behavior switches, all optional:
+
+```ts
+interface FormSettings {
+  showProgress?: boolean;        // show the step header (default true)
+  allowBackNavigation?: boolean; // when false, hides the Back button AND disables header clicks (default true)
+  showSummary?: boolean;         // read-only recap with edit links before submit (default false)
+  summaryLabel?: string;         // summary heading, default 'Review your answers'
+  editLabel?: string;            // summary edit-button label, default 'Edit'
+  nextLabel?: string;            // default 'Next'
+  backLabel?: string;            // default 'Back'
+  submitLabel?: string;          // default 'Submit'
+  requiredMessage?: string;      // message when a required answer is missing
+  invalidMessage?: string;       // message when an answer is out of range / invalid
+  successTitle?: string;         // built-in success screen heading, default 'Thank you!'
+  successMessage?: string;       // built-in success screen body
+  submitErrorMessage?: string;   // shown when the POST fails (server messages win)
+}
+```
+
+All labels are passed through the `translate` function when one is provided.
 
 ### StepConfig
 
@@ -135,8 +254,12 @@ interface StepConfig {
   label: string;    // displayed in the progress bar
   intro?: string;   // optional paragraph shown below the step title
   groups: QuestionGroup[];
+  condition?: Condition;  // skip the entire step unless met (reference other steps via stepId)
+  class?: string;   // extra Tailwind classes on the step container
 }
 ```
+
+A step with an unmet `condition` is **skipped entirely**: it disappears from the progress header, Next/Back jump over it, and its questions are excluded from validation and from the submitted responses.
 
 ### QuestionGroup
 
@@ -151,6 +274,7 @@ interface QuestionGroup {
   condition?: Condition;   // hide the entire group unless condition is met
   renderMode?: 'individual' | 'likert-batch' | 'inline';
   layout?: LayoutHint;
+  class?: string;          // extra Tailwind classes on the group wrapper
 }
 ```
 
@@ -169,6 +293,8 @@ The individual form field.
 ```ts
 interface Question {
   id: string;         // unique within the step, used as the response key
+  uuid?: string;      // stable id for the submission payload — assign once, never change,
+                      // then labels/ids/steps can evolve without breaking your backend
   type: QuestionType;
   label: string;      // field label (or i18n key when translate fn is provided)
   required?: boolean;  // if true, validation blocks progression when empty
@@ -187,7 +313,11 @@ interface Question {
   // Text
   placeholder?: string;
   rows?: number;       // for textarea
-  tooltip?: string;
+  inputType?: 'text' | 'email' | 'url';  // for text-input
+  tooltip?: string;    // help text shown as an info icon next to the label
+  // Styling
+  class?: string;       // extra Tailwind classes on the question root
+  optionClass?: string; // extra Tailwind classes on each option (select-type questions)
 }
 ```
 
@@ -197,11 +327,14 @@ interface Question {
 |------|-----------|------------|-------|
 | `'single-select'` | `RadioListGroup` or `RadioCardGroup` | `string` | Use `displayVariant: 'card'` for card layout. Requires `options`. |
 | `'multi-select'` | `CheckboxGroup` | `string[]` | Requires `options`. Supports `exclusive` options. |
+| `'select'` | `SelectInput` | `string` | Native dropdown, good for long option lists. Requires `options`; `placeholder` is the empty first option. |
 | `'likert'` | `LikertGroup` | `string` | Designed for use inside a group with `renderMode: 'likert-batch'`. Requires `options`. |
 | `'scale'` | `ScaleInput` | `number` | Numbered circular buttons. Uses `min`/`max` (default 1-10), `minLabel`/`maxLabel`. |
 | `'time-input'` | `TimeInput` | `string` | HTML time input. `step` is in seconds (900 = 15-minute rounding). |
+| `'date-input'` | `DateInput` | `string` | HTML date input, ISO `YYYY-MM-DD`. |
 | `'number-input'` | `NumberInput` | `number` | Supports `min`, `max`, `step`, `unit`, `placeholder`. |
-| `'text-input'` | `TextInput` | `string` | Plain text field. Supports `placeholder`. |
+| `'range'` | `RangeInput` | `{ from, to }` | A from–to interval as two number fields. `min`/`max` bound both ends; `minLabel`/`maxLabel` label the fields (default From/To); supports `step`, `unit`. Half-filled or inverted ranges fail validation. |
+| `'text-input'` | `TextInput` | `string` | Plain text field. Supports `placeholder` and `inputType: 'email' \| 'url'`. |
 | `'textarea'` | `TextArea` | `string` | Multi-line. Supports `rows` (default 4), `placeholder`. |
 
 ### QuestionOption
@@ -224,7 +357,6 @@ Controls grid layout within a group or for a specific question.
 ```ts
 interface LayoutHint {
   columns?: 1 | 2 | 3;   // render in a CSS grid with this many columns
-  gridWith?: string[];    // IDs of questions to group into the same grid row
 }
 ```
 
@@ -254,18 +386,22 @@ Show this item when a specific question has (or doesn't have) a specific value:
 ```ts
 interface SimpleCondition {
   questionId: string;
-  operator: 'equals' | 'not-equals' | 'includes' | 'not-includes';
-  value: unknown;
+  operator: ConditionOperator;
+  value?: unknown;   // not used by 'answered' / 'not-answered'
   stepId?: string;   // look up the response in a different step (for cross-step conditions)
 }
 ```
 
 | Operator | Behavior |
 |----------|----------|
-| `'equals'` | `response === value` |
+| `'equals'` | `response === value` (strict — a `scale` answer is a `number`, so compare with a number) |
 | `'not-equals'` | `response !== value` |
 | `'includes'` | `Array.isArray(response) && response.includes(value)` |
 | `'not-includes'` | `!Array.isArray(response) \|\| !response.includes(value)` |
+| `'greater-than'` | both response and value are numbers, and `response > value` |
+| `'less-than'` | both response and value are numbers, and `response < value` |
+| `'answered'` | response is present and non-empty |
+| `'not-answered'` | response is missing or empty |
 
 #### Compound condition
 
@@ -463,6 +599,69 @@ const config: FormConfig = {
 };
 ```
 
+## Submitting results
+
+Set `config.submit` and the form POSTs the results as JSON when the user submits (after the summary screen, when enabled):
+
+```ts
+const config: FormConfig = {
+  version: 3,
+  submit: {
+    url: 'https://api.example.com/quiz-results',
+    headers: { authorization: 'Bearer …' },  // optional
+    successUrl: '/subscribe'                  // optional: navigate here on success
+  },
+  steps: [/* … */]
+};
+```
+
+### Payload
+
+Each answer carries the question's **stable `uuid`** (falling back to `id`), the raw value, and a human-readable `displayValue`. Key your backend on `uuid` and the quiz can be reworded, reordered, and restructured without breaking old data:
+
+```json
+{
+  "form": { "version": 3, "submittedAt": "2026-07-02T10:00:00.000Z" },
+  "answers": [
+    {
+      "uuid": "3f1c2d84-…",
+      "questionId": "traveling",
+      "stepId": "travel",
+      "type": "single-select",
+      "label": "Are you planning to travel this year?",
+      "value": "yes",
+      "displayValue": "Yes"
+    }
+  ]
+}
+```
+
+Only currently visible answers are included (same rules as `onFormComplete`). `buildSubmitPayload(config, getResponse, translate?)` is exported if you want to build the payload yourself.
+
+### After a successful POST
+
+In order of precedence:
+
+1. **`redirectUrl` in the server's JSON response** — the browser navigates there. Use this when the follow-up depends on the submission (e.g. a personalized results page).
+2. **`submit.successUrl` from the config** — same navigation, statically configured. Ideal for a subscription/results page that needs its own layout.
+3. **Built-in success screen** — replaces the form in place, inside the same themed container, so it works in any host page. Text comes from `title`/`message` in the server response, else `settings.successTitle`/`successMessage`.
+
+For a fully custom in-place result view, pass a `success` snippet:
+
+```svelte
+<MultiStepForm {config}>
+  {#snippet success(payload, response)}
+    <ScoreCard score={response.score} />
+  {/snippet}
+</MultiStepForm>
+```
+
+### Errors
+
+A failed POST (network error or non-2xx) shows a `role="alert"` message — the server's `message` field when present, else `settings.submitErrorMessage` — and re-enables Submit for a retry. Answers are never lost. The Submit button is disabled while a request is in flight.
+
+Two callbacks report the outcome: `onSubmitSuccess(payload, response)` and `onSubmitError(error)`. `onFormComplete` still fires when the user submits, before the POST.
+
 ## Response format
 
 When `onFormComplete` fires, responses are keyed by step ID, then question ID:
@@ -495,9 +694,18 @@ Validation runs automatically when the user clicks "Next". The validator:
 1. Walks all groups and questions in the current step's config.
 2. Skips any group or question hidden by a `condition`.
 3. For each visible question with `required: true`, checks that a response exists and is non-empty.
-4. If incomplete, highlights the first incomplete group (red ring, smooth scroll).
+4. For answered `number-input` / `scale` questions, checks the value is within `min`/`max`. For `range` questions, both ends must be filled, within bounds, and not inverted.
+5. If invalid, highlights the first failing group (red ring, smooth scroll) and shows an error message via `role="alert"` — `settings.requiredMessage` for missing answers, `settings.invalidMessage` for out-of-range ones.
 
 No hand-coded validation arrays are needed. The config is the single source of truth.
+
+### Hidden answers
+
+When a question becomes hidden by a condition, its stored answer is cleared, so stale values can't keep dependent conditions alive. On submit, `onFormComplete` receives only the responses of currently visible steps, groups, and questions (via `collectResponses`) — the payload always matches what the user saw.
+
+### Config sanity checks
+
+In dev mode, `MultiStepForm` runs `validateConfig(config)` and logs warnings for duplicate ids, select questions without options, mismatched `likert-batch` option sets, conditions referencing unknown questions or steps, and comparison operators missing a `value`. You can also call `validateConfig` yourself (e.g. in a unit test for your configs).
 
 ## Project structure
 
@@ -538,12 +746,12 @@ src/routes/
 Everything is available from `'formcomp'`:
 
 ```ts
-import { MultiStepForm, createFormState, evaluateCondition, validateStep } from 'formcomp';
+import { MultiStepForm, createFormState, evaluateCondition, validateStep, collectResponses, validateConfig } from 'formcomp';
 import type { FormConfig, Question, Condition } from 'formcomp';
 ```
 
-- **Components**: `MultiStepForm`, `FormStep`, `QuestionRenderer`, `GroupRenderer`, all 9 input components, all 4 layout components
+- **Components**: `MultiStepForm`, `FormStep`, `QuestionRenderer`, `GroupRenderer`, `SummaryStep`, all 12 input components (+ `FieldLabel`), all 4 layout components
 - **State**: `createFormState`
-- **Utilities**: `evaluateCondition`, `validateStep`
-- **Types**: `FormConfig`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `TranslateFn`, `FormStateAdapter`, `FormCallbacks`
+- **Utilities**: `evaluateCondition`, `isAnswered`, `validateStep`, `questionStatus`, `isStepVisible`, `collectResponses`, `validateConfig`, `buildSubmitPayload`, `formatAnswer`, `useTranslate`
+- **Types**: `FormConfig`, `FormSettings`, `SubmitConfig`, `SubmitAnswer`, `SubmitPayload`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `RangeValue`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `TranslateFn`, `FormStateAdapter`, `FormStateController`, `FormStateOptions`, `FormCallbacks`
 - **Context keys**: `FORM_STATE_KEY`, `TRANSLATE_KEY`, `STEP_ID_KEY`

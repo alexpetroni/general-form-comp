@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { MultiStepForm } from '$lib/index.js';
 	import type { FormConfig, FormCallbacks } from '$lib/types.js';
 
@@ -356,11 +357,19 @@
 	};
 </script>
 
-<div class="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+<div class="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8">
 	<div class="mx-auto max-w-4xl">
+		<div class="text-right mb-2">
+			<a
+				href={resolve('/examples')}
+				class="text-sm text-muted-foreground hover:text-foreground"
+			>
+				Browse all examples →
+			</a>
+		</div>
 		<div class="text-center mb-8">
-			<h1 class="text-3xl font-bold text-gray-900">Better Sleep Assessment</h1>
-			<p class="mt-2 text-gray-600">Demo of the config-driven multi-step form</p>
+			<h1 class="text-3xl font-bold tracking-tight">Better Sleep Assessment</h1>
+			<p class="mt-2 text-muted-foreground">Demo of the config-driven multi-step form</p>
 		</div>
 		<MultiStepForm config={demoConfig} {callbacks} />
 	</div>

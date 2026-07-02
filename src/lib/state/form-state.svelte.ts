@@ -1,24 +1,26 @@
-import type { FormConfig, FormStateAdapter } from '../types.js';
+import type { FormConfig, FormStateController } from '../types.js';
 
-interface FormStateOptions {
+export interface FormStateOptions {
 	persist?: 'sessionStorage' | 'localStorage' | false;
 	storageKey?: string;
 	debounceMs?: number;
+	/**
+	 * Version stamp of the form config. When provided, persisted state saved
+	 * under a different version is discarded on hydration — bump it whenever
+	 * the config changes shape so stale answers can't attach to new questions.
+	 */
+	version?: string | number;
 }
 
 export function createFormState(
 	config: FormConfig,
 	options: FormStateOptions = {}
-): FormStateAdapter & {
-	currentStepIndex: number;
+): FormStateController & {
 	readonly currentStepId: string;
 	readonly stepCount: number;
-	nextStep: () => void;
-	prevStep: () => void;
-	goToStep: (index: number) => void;
 	readonly allResponses: Record<string, Record<string, unknown>>;
 } {
-	const { persist = 'sessionStorage', storageKey = 'formcomp-state', debounceMs = 300 } = options;
+	const { persist = 'sessionStorage', storageKey = 'formcomp-state', debounceMs = 300, version } = options;
 
 	// Initialize responses structure
 	const initial: Record<string, Record<string, unknown>> = {};
@@ -35,13 +37,20 @@ export function createFormState(
 			const stored = storage.getItem(storageKey);
 			if (stored) {
 				const parsed = JSON.parse(stored);
-				if (parsed.responses) hydrated = { ...initial, ...parsed.responses };
-				if (typeof parsed.currentStepIndex === 'number') hydratedIndex = parsed.currentStepIndex;
+				const versionMatches = version === undefined || parsed.version === version;
+				if (versionMatches) {
+					if (parsed.responses) hydrated = { ...initial, ...parsed.responses };
+					if (typeof parsed.currentStepIndex === 'number') hydratedIndex = parsed.currentStepIndex;
+				}
 			}
 		} catch {
 			// ignore parse errors
 		}
 	}
+
+	// Clamp against the current config — it may have fewer steps than when the
+	// state was persisted.
+	hydratedIndex = Math.min(Math.max(hydratedIndex, 0), config.steps.length - 1);
 
 	let responses = $state<Record<string, Record<string, unknown>>>(hydrated);
 	let currentStepIndex = $state(hydratedIndex);
@@ -56,7 +65,7 @@ export function createFormState(
 				const storage = persist === 'sessionStorage' ? sessionStorage : localStorage;
 				storage.setItem(
 					storageKey,
-					JSON.stringify({ responses, currentStepIndex })
+					JSON.stringify({ responses, currentStepIndex, version })
 				);
 			} catch {
 				// storage full or unavailable

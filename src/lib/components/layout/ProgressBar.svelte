@@ -1,66 +1,73 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { TRANSLATE_KEY, type TranslateFn, type StepConfig } from '../../types.js';
+	import type { StepConfig } from '../../types.js';
+	import { useTranslate } from '../../i18n.js';
 
 	interface Props {
 		steps: StepConfig[];
 		currentIndex: number;
 		onStepClick?: (index: number) => void;
+		/** When false, completed steps are not clickable. Default: true. */
+		clickable?: boolean;
 	}
 
-	let { steps, currentIndex, onStepClick }: Props = $props();
+	let { steps, currentIndex, onStepClick, clickable = true }: Props = $props();
 
-	const t = getContext<TranslateFn | undefined>(TRANSLATE_KEY);
-	const translate = (key: string) => t ? t(key) : key;
+	const translate = useTranslate();
 </script>
 
 <nav aria-label="Progress" class="mb-8">
-	<ol role="list" class="divide-y divide-gray-300 rounded-md border border-gray-300 md:flex md:divide-y-0">
+	<!-- On small screens the step labels collapse to numbers, so spell out where we are -->
+	{#if steps[currentIndex]}
+		<p class="sm:hidden mb-2 text-sm text-(--form-muted)">
+			{currentIndex + 1} / {steps.length} · <span class="font-medium text-(--form-fg)">{translate(steps[currentIndex].label)}</span>
+		</p>
+	{/if}
+	<ol role="list" class="flex items-center gap-2 overflow-x-auto">
 		{#each steps as step, i (step.id)}
 			{@const isCompleted = i < currentIndex}
 			{@const isCurrent = i === currentIndex}
-			{@const isUpcoming = i > currentIndex}
-			<li class="relative md:flex md:flex-1">
-				{#if isCompleted}
+			<li class="flex items-center gap-2">
+				{#if isCompleted && clickable}
 					<button
 						type="button"
 						onclick={() => onStepClick?.(i)}
-						class="group flex w-full items-center"
+						class="group flex items-center gap-2 rounded-full bg-(--form-accent) px-3 py-1.5 text-sm font-medium text-(--form-accent-foreground) transition-colors hover:bg-(--form-accent)/80"
 					>
-						<span class="flex items-center px-6 py-4 text-sm font-medium">
-							<span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 group-hover:bg-indigo-800">
-								<svg class="size-6 text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-									<path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
-								</svg>
-							</span>
-							<span class="ml-4 text-sm font-medium text-gray-900">{translate(step.label)}</span>
-						</span>
+						<svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M20 6 9 17l-5-5" />
+						</svg>
+						<span class="hidden sm:inline">{translate(step.label)}</span>
 					</button>
-				{:else if isCurrent}
-					<span class="flex items-center px-6 py-4 text-sm font-medium" aria-current="step">
-						<span class="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-indigo-600">
-							<span class="text-indigo-600">{String(i + 1).padStart(2, '0')}</span>
-						</span>
-						<span class="ml-4 text-sm font-medium text-indigo-600">{translate(step.label)}</span>
+				{:else if isCompleted}
+					<span class="flex items-center gap-2 rounded-full bg-(--form-accent) px-3 py-1.5 text-sm font-medium text-(--form-accent-foreground)">
+						<svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M20 6 9 17l-5-5" />
+						</svg>
+						<span class="hidden sm:inline">{translate(step.label)}</span>
 					</span>
-				{:else if isUpcoming}
-					<span class="group flex items-center">
-						<span class="flex items-center px-6 py-4 text-sm font-medium">
-							<span class="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-gray-300">
-								<span class="text-gray-500">{String(i + 1).padStart(2, '0')}</span>
-							</span>
-							<span class="ml-4 text-sm font-medium text-gray-500">{translate(step.label)}</span>
+				{:else if isCurrent}
+					<span
+						class="flex items-center gap-2 rounded-full border-2 border-(--form-accent) px-3 py-1.5 text-sm font-medium text-(--form-accent)"
+						aria-current="step"
+					>
+						<span class="flex size-5 items-center justify-center rounded-full bg-(--form-accent) text-xs text-(--form-accent-foreground)">
+							{i + 1}
 						</span>
+						<span class="hidden sm:inline">{translate(step.label)}</span>
+					</span>
+				{:else}
+					<span class="flex items-center gap-2 rounded-full border border-(--form-border) px-3 py-1.5 text-sm font-medium text-(--form-muted)">
+						<span class="flex size-5 items-center justify-center rounded-full border border-(--form-border) text-xs">
+							{i + 1}
+						</span>
+						<span class="hidden sm:inline">{translate(step.label)}</span>
 					</span>
 				{/if}
 
-				<!-- Arrow separator -->
 				{#if i < steps.length - 1}
-					<div class="absolute top-0 right-0 hidden h-full w-5 md:block" aria-hidden="true">
-						<svg class="size-full text-gray-300" viewBox="0 0 22 80" fill="none" preserveAspectRatio="none">
-							<path d="M0 -2L20 40L0 82" vector-effect="non-scaling-stroke" stroke="currentcolor" stroke-linejoin="round" />
-						</svg>
-					</div>
+					<svg class="size-4 text-(--form-muted) shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="m9 18 6-6-6-6" />
+					</svg>
 				{/if}
 			</li>
 		{/each}

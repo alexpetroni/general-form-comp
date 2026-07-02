@@ -4,6 +4,14 @@ function isCompound(c: Condition): c is CompoundCondition {
 	return 'conditions' in c;
 }
 
+/** True when a response counts as "answered": not nullish, not an empty string or array. */
+export function isAnswered(value: unknown): boolean {
+	if (value === undefined || value === null) return false;
+	if (typeof value === 'string') return value.trim().length > 0;
+	if (Array.isArray(value)) return value.length > 0;
+	return true;
+}
+
 function evaluateSimple(
 	condition: SimpleCondition,
 	getResponse: (stepId: string, questionId: string) => unknown,
@@ -29,6 +37,18 @@ function evaluateSimple(
 			}
 			return true;
 		}
+		case 'greater-than':
+			return typeof response === 'number' && typeof condition.value === 'number'
+				? response > condition.value
+				: false;
+		case 'less-than':
+			return typeof response === 'number' && typeof condition.value === 'number'
+				? response < condition.value
+				: false;
+		case 'answered':
+			return isAnswered(response);
+		case 'not-answered':
+			return !isAnswered(response);
 	}
 }
 

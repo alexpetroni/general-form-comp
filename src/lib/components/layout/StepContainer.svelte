@@ -1,28 +1,29 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { getContext } from 'svelte';
-	import { TRANSLATE_KEY, type TranslateFn } from '../../types.js';
+	import { cn } from '../../utils.js';
+	import { useTranslate } from '../../i18n.js';
 
 	interface Props {
 		title?: string;
 		intro?: string;
+		class?: string;
 		children: Snippet;
 	}
 
-	let { title, intro, children }: Props = $props();
+	let { title, intro, class: className, children }: Props = $props();
 
-	const t = getContext<TranslateFn | undefined>(TRANSLATE_KEY);
-	const translate = (key: string) => t ? t(key) : key;
+	const translate = useTranslate();
 </script>
 
-<div class="space-y-8">
+<div class={cn('space-y-8', className)}>
 	{#if title || intro}
 		<div class="mb-6">
 			{#if title}
-				<h2 class="text-xl font-bold text-gray-900">{translate(title)}</h2>
+				<!-- tabindex="-1" so MultiStepForm can move focus here on step change -->
+				<h2 tabindex="-1" class="text-xl font-semibold tracking-tight outline-none">{translate(title)}</h2>
 			{/if}
 			{#if intro}
-				<p class="mt-2 text-sm text-gray-600">{translate(intro)}</p>
+				<p class="mt-2 text-sm text-(--form-muted)">{translate(intro)}</p>
 			{/if}
 		</div>
 	{/if}

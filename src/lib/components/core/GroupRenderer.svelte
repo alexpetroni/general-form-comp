@@ -12,9 +12,10 @@
 	interface Props {
 		group: QuestionGroup;
 		warningGroupId?: string | null;
+		warningMessage?: string;
 	}
 
-	let { group, warningGroupId = null }: Props = $props();
+	let { group, warningGroupId = null, warningMessage }: Props = $props();
 
 	const state = getContext<FormStateAdapter>(FORM_STATE_KEY);
 	const stepId = getContext<string>(STEP_ID_KEY);
@@ -43,6 +44,21 @@
 		)
 	);
 
+	// Clear stored answers of questions that become hidden, so stale values
+	// can't keep dependent conditions alive or leak into the submission.
+	// Clearing may cascade (hiding one question can hide the next); the effect
+	// re-runs until nothing is left to clear.
+	$effect(() => {
+		const hidden = groupVisible
+			? group.questions.filter((q) => !visibleQuestions.includes(q))
+			: group.questions;
+		for (const question of hidden) {
+			if (state.getResponse(stepId, question.id) !== undefined) {
+				state.setResponse(stepId, question.id, undefined);
+			}
+		}
+	});
+
 	const gridColsClass = $derived(
 		group.layout?.columns === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-6' :
 		group.layout?.columns === 3 ? 'grid grid-cols-1 sm:grid-cols-3 gap-6' :
@@ -51,7 +67,7 @@
 </script>
 
 {#if groupVisible && visibleQuestions.length > 0}
-	<QuestionGroupWrapper id={group.id} label={group.label} warning={isWarning}>
+	<QuestionGroupWrapper id={group.id} label={group.label} intro={group.intro} warning={isWarning} {warningMessage} class={group.class}>
 		{#if group.renderMode === 'likert-batch'}
 			<!-- All questions rendered as a single LikertGroup -->
 			<LikertGroup questions={visibleQuestions} warning={isWarning} />

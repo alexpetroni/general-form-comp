@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { TRANSLATE_KEY, type TranslateFn } from '../../types.js';
+	import { cn } from '../../utils.js';
+	import { warningRing, optionFocus } from '../../styles.js';
+	import { useTranslate } from '../../i18n.js';
+	import FieldLabel from './FieldLabel.svelte';
 
 	interface Props {
 		min?: number;
@@ -8,15 +10,18 @@
 		value?: number | undefined;
 		onchange?: (value: number) => void;
 		name?: string;
+		label?: string;
+		tooltip?: string;
 		minLabel?: string;
 		maxLabel?: string;
 		warning?: boolean;
+		class?: string;
+		optionClass?: string;
 	}
 
-	let { min = 1, max = 10, value = $bindable(), onchange, name = 'scale', minLabel, maxLabel, warning = false }: Props = $props();
+	let { min = 1, max = 10, value = $bindable(), onchange, name = 'scale', label, tooltip, minLabel, maxLabel, warning = false, class: className, optionClass }: Props = $props();
 
-	const t = getContext<TranslateFn | undefined>(TRANSLATE_KEY);
-	const translate = (key: string) => t ? t(key) : key;
+	const translate = useTranslate();
 
 	function handleSelect(n: number) {
 		value = n;
@@ -26,18 +31,29 @@
 	const numbers = $derived(Array.from({ length: max - min + 1 }, (_, i) => min + i));
 </script>
 
-<fieldset aria-label={name}>
+<fieldset aria-label={label ? undefined : name} class={className}>
+	{#if label}
+		<FieldLabel tag="legend" text={label} {tooltip} />
+	{/if}
 	<div
-		class="flex flex-col gap-2"
-		class:ring-2={warning}
-		class:ring-red-300={warning}
-		class:rounded-lg={warning}
-		class:p-3={warning}
+		class={cn(
+			'flex flex-col gap-2 rounded-(--form-radius) p-1',
+			warning && cn(warningRing, 'p-3')
+		)}
 	>
 		<div class="flex flex-wrap gap-2 justify-center">
 			{#each numbers as n (n)}
 				{@const selected = value === n}
-				<label class="flex cursor-pointer items-center justify-center rounded-full size-10 text-sm font-semibold focus-within:outline-hidden {selected ? 'bg-indigo-600 text-white ring-2 ring-indigo-600' : 'ring-1 ring-inset ring-gray-300 bg-white text-gray-900 hover:bg-gray-50'}">
+				<label
+					class={cn(
+						'flex cursor-pointer items-center justify-center rounded-full size-10 text-sm font-medium border transition-all',
+						optionFocus,
+						selected
+							? 'bg-(--form-accent) text-(--form-accent-foreground) border-(--form-accent)'
+							: 'border-(--form-border) bg-(--form-bg) hover:bg-(--form-accent)/10',
+						optionClass
+					)}
+				>
 					<input
 						type="radio"
 						{name}
@@ -51,7 +67,7 @@
 			{/each}
 		</div>
 		{#if minLabel || maxLabel}
-			<div class="flex justify-between text-xs text-gray-500 px-1">
+			<div class="flex justify-between text-xs text-(--form-muted) px-1">
 				<span>{minLabel ? translate(minLabel) : ''}</span>
 				<span>{maxLabel ? translate(maxLabel) : ''}</span>
 			</div>
