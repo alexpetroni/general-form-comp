@@ -128,6 +128,8 @@ export interface StepConfig {
 export interface FormSettings {
 	/** Show the step progress header. Default: true (hidden automatically when only one step is visible). */
 	showProgress?: boolean;
+	/** Accessible name of the progress header's `<nav>` landmark (or i18n key). Default: 'Progress'. */
+	progressLabel?: string;
 	/**
 	 * Allow navigating back to earlier steps. When false, both the Back button
 	 * and clicking completed steps in the progress header are disabled.

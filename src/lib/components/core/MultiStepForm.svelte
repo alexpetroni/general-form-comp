@@ -295,6 +295,7 @@
 			currentIndex={showingSummary ? visibleSteps.length : currentVisibleIndex}
 			onStepClick={handleStepClick}
 			clickable={canGoBack}
+			label={settings.progressLabel}
 		/>
 	{/if}
 
