@@ -16,6 +16,7 @@
 	import TextInput from '../inputs/TextInput.svelte';
 	import TextArea from '../inputs/TextArea.svelte';
 	import ConsentCheckbox from '../inputs/ConsentCheckbox.svelte';
+	import LikertGroup from '../inputs/LikertGroup.svelte';
 	import type { RangeValue } from '../../types.js';
 
 	interface Props {
@@ -89,6 +90,10 @@
 		{warning}
 		class={question.class}
 	/>
+{:else if question.type === 'likert'}
+	<!-- A likert question outside a likert-batch group: a one-row scale with its
+	     own header. LikertGroup reads the answer from context, like this renderer. -->
+	<LikertGroup questions={[question]} {warning} class={question.class} />
 {:else if question.type === 'scale'}
 	<ScaleInput
 		min={question.min ?? 1}
