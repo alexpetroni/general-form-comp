@@ -20,7 +20,12 @@ export function createFormState(
 	readonly stepCount: number;
 	readonly allResponses: Record<string, Record<string, unknown>>;
 } {
-	const { persist = 'sessionStorage', storageKey = 'formcomp-state', debounceMs = 300, version } = options;
+	const {
+		persist = 'sessionStorage',
+		storageKey = 'formcomp-state',
+		debounceMs = 300,
+		version = config.version
+	} = options;
 
 	// Initialize responses structure
 	const initial: Record<string, Record<string, unknown>> = {};
