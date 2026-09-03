@@ -76,7 +76,7 @@ npm run dev
 
 Visit `http://localhost:5173` to see the demo form, and `http://localhost:5173/examples` for the full example gallery.
 
-Unit tests (condition evaluator, validator incl. the email/url rules, config checks, submission payload, state controller, progress label) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation and ARIA state, summary, submission payload) run with Playwright against a production preview build:
+Unit tests (condition evaluator, validator incl. the email/url rules, config checks, submission payload, state controller, progress label) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation and ARIA state, summary, submission payload and lifecycle) run with Playwright against a production preview build:
 
 ```sh
 npm run test:unit
@@ -111,7 +111,7 @@ Drop a new `.ts` file into `./src/examples/`, add it to `src/examples/index.ts`,
 | `translate` | `TranslateFn` | Optional `(key, params?) => string` for i18n. When provided, all `label` fields are treated as translation keys. When omitted, labels render as-is. |
 | `state` | `FormStateController` | Optional external state controller (`FormStateAdapter` + step navigation). If omitted, an internal one is created with sessionStorage persistence. |
 | `callbacks` | `FormCallbacks` | Optional lifecycle callbacks. |
-| `success` | `Snippet<[SubmitPayload, unknown]>` | Optional custom success screen rendered after a successful POST (see "Submitting results"). |
+| `success` | `Snippet<[SubmitPayload, unknown]>` | Optional custom success screen rendered after a successful submission — a 2xx POST or, without `config.submit`, a resolved `onFormComplete` (see "Submitting results"). |
 
 ### i18n
 
@@ -137,12 +137,14 @@ Without `translate`, all strings render as-is — plain-English configs need no 
 ```ts
 interface FormCallbacks {
   onStepComplete?: (stepId: string, stepIndex: number) => void;
-  onFormComplete?: (allResponses: Record<string, Record<string, unknown>>) => void;
+  onFormComplete?: (allResponses: Record<string, Record<string, unknown>>) => void | Promise<unknown>;
   onStepChange?: (fromIndex: number, toIndex: number) => void;
-  onSubmitSuccess?: (payload: SubmitPayload, response: unknown) => void; // after a 2xx POST
-  onSubmitError?: (error: unknown) => void;                              // network error or non-2xx
+  onSubmitSuccess?: (payload: SubmitPayload, response: unknown) => void; // after a 2xx POST (not for the callback transport)
+  onSubmitError?: (error: unknown) => void;                              // SubmitError (non-2xx), network error, or the rejection of onFormComplete
 }
 ```
+
+`onFormComplete` fires once per set of answers when the user submits and may return a promise: the form stays busy (Submit disabled, `aria-busy`) until it settles, and only then POSTs. Without `config.submit` the callback *is* the transport — see [Without a submit endpoint](#without-a-submit-endpoint). A rejected promise aborts the submission: the form shows `settings.submitErrorMessage`, fires `onSubmitError` with the rejection reason, keeps every answer and re-enables Submit; the retry calls `onFormComplete` again.
 
 ### State management
 
@@ -158,15 +160,27 @@ const state = createFormState(config, {
   version: 3                // default: config.version — persisted state saved
                             // under another version is discarded
 });
+
+state.reset(); // every answer cleared, back to the first step, storage entry removed
 ```
 
-You can also provide your own state by implementing the `FormStateAdapter` interface:
+`reset()` puts the controller back to its initial state: one empty bucket per step, index 0, any pending debounced save cancelled, and the storage entry removed synchronously so nothing re-persists it. `MultiStepForm` calls it after a successful submission (see [After success](#after-success)); call it yourself for a "Start over" button.
+
+You can also provide your own state by implementing the `FormStateAdapter` interface (what the inputs need) — `MultiStepForm` itself takes a `FormStateController`, which adds step navigation:
 
 ```ts
 interface FormStateAdapter {
   getResponse(stepId: string, questionId: string): unknown;
   setResponse(stepId: string, questionId: string, value: unknown): void;
   getStepResponses(stepId: string): Record<string, unknown>;
+}
+
+interface FormStateController extends FormStateAdapter {
+  currentStepIndex: number;
+  nextStep(): void;
+  prevStep(): void;
+  goToStep(index: number): void;
+  reset?(): void; // optional — a controller without it is simply not cleared after success
 }
 ```
 
@@ -262,7 +276,7 @@ interface FormSettings {
   invalidMessage?: string;       // message when an answer is out of range / invalid
   successTitle?: string;         // built-in success screen heading, default 'Thank you!'
   successMessage?: string;       // built-in success screen body
-  submitErrorMessage?: string;   // shown when the POST fails (server messages win)
+  submitErrorMessage?: string;   // shown when the POST fails or onFormComplete rejects (server messages win)
   honeypot?: boolean;            // render a hidden anti-spam field (see "Anti-spam honeypot")
 }
 ```
@@ -670,7 +684,7 @@ const config: FormConfig = {
 
 Two layers of defense:
 
-1. **Client**: if the honeypot is filled at submit time, the form shows the normal success state (or navigates to `submit.successUrl`) **without** calling `submit.url` and without firing `onSubmitSuccess`/`onSubmitError` — a silent drop the bot can't distinguish from success.
+1. **Client**: if the honeypot is filled at submit time, the form shows the normal success state (or navigates to `submit.successUrl`) **without** calling `submit.url` and without firing `onSubmitSuccess`/`onSubmitError` — a silent drop the bot can't distinguish from success (the state is cleared like after any success).
 2. **Server**: the payload always carries `honeypot: { field: 'website', value: '' }` when the feature is on, so an endpoint can independently reject any submission where the key is missing (request didn't come from the form) or the value is non-empty (bot that bypassed the client).
 
 ## Submitting results
@@ -730,11 +744,47 @@ For a fully custom in-place result view, pass a `success` snippet:
 </MultiStepForm>
 ```
 
+### After success
+
+After a successful submission of any kind — a 2xx POST, a redirect, the honeypot drop, or the callback transport below — the form calls `reset()` on its state controller: every answer is cleared and the persisted storage entry is removed, so a reload (or Back after a redirect) lands on an empty first step instead of a filled last step with Submit one click from a duplicate. The built-in success screen and the `success` snippet render from the payload and response captured *before* the reset. On a redirect the reset happens before the navigation. A failed submission resets nothing.
+
+### Without a submit endpoint
+
+Leave `config.submit` unset and `onFormComplete` is the transport. Return a promise from it (an API call, a store write…) and the form stays busy — Submit disabled, `aria-busy` — until it settles:
+
+```ts
+const callbacks: FormCallbacks = {
+  async onFormComplete(allResponses) {
+    const res = await fetch('/api/answers', { method: 'POST', body: JSON.stringify(allResponses) });
+    if (!res.ok) throw new Error('save failed');
+    return res.json(); // becomes `response` in the success snippet
+  }
+};
+```
+
+- **Resolved**: the built-in success screen (or the `success` snippet) appears with `settings.successTitle` / `successMessage`; `response` is the resolved value, or `null`. The state is then reset. `onSubmitSuccess` is **not** fired — it reports the POST.
+- **Rejected**: the form shows `settings.submitErrorMessage`, fires `onSubmitError(reason)`, keeps every answer and re-enables Submit; the retry calls `onFormComplete` again.
+
+A synchronous `onFormComplete` (no return value) resolves at once, so the success screen shows right away.
+
 ### Errors
 
 A failed POST (network error or non-2xx) shows a `role="alert"` message — the server's `message` field when present, else `settings.submitErrorMessage` — and re-enables Submit for a retry. Answers are never lost. The Submit button is disabled while a request is in flight.
 
-Two callbacks report the outcome: `onSubmitSuccess(payload, response)` and `onSubmitError(error)`. `onFormComplete` still fires when the user submits, before the POST.
+Two callbacks report the outcome: `onSubmitSuccess(payload, response)` and `onSubmitError(error)`. A non-2xx response reaches `onSubmitError` as a `SubmitError` carrying the HTTP `status` and the parsed JSON body as `data` (`null` when the body was not JSON); a network failure is passed through as received:
+
+```ts
+import { SubmitError } from 'formcomp';
+
+const callbacks: FormCallbacks = {
+  onSubmitError(error) {
+    if (error instanceof SubmitError) console.warn(error.status, error.data);
+    else console.warn('network', error);
+  }
+};
+```
+
+`onFormComplete` still fires when the user submits, before the POST, and is awaited first: a rejected promise aborts the POST (see above).
 
 ## Response format
 
@@ -806,12 +856,12 @@ src/lib/
   types.ts                          # full type system + context keys
   i18n.ts                           # useTranslate(): translate fn from context, identity fallback
   format.ts                         # formatAnswer(): human-readable answer values
-  submission.ts                     # buildSubmitPayload(), HONEYPOT_FIELD
+  submission.ts                     # buildSubmitPayload(), HONEYPOT_FIELD, SubmitError
   styles.ts                         # shared Tailwind class strings for the inputs
   utils.ts                          # cn() — clsx + tailwind-merge
   theme.css                         # --form-* tokens (shipped as formcomp/theme.css)
   state/
-    form-state.svelte.ts            # reactive state with persistence, version check, clamping
+    form-state.svelte.ts            # reactive state with persistence, version check, clamping, reset()
   conditions/
     evaluator.ts                    # condition evaluation engine
   validation/
@@ -860,7 +910,7 @@ src/routes/
   examples/
     +page.svelte                    # example gallery
     [slug]/
-      +page.svelte                  # renders one example by slug
+      +page.svelte                  # renders one example by slug (async onFormComplete; ?fail=once rejects the first call)
 static/
   favicon.svg                       # demo favicon (not part of the package)
   robots.txt
@@ -869,15 +919,16 @@ tests/
     evaluator.test.ts               # condition evaluator
     validator.test.ts               # validation incl. isValidUrl, step visibility, collectResponses
     config-check.test.ts            # validateConfig
-    submission.test.ts              # buildSubmitPayload, formatAnswer
+    submission.test.ts              # buildSubmitPayload, formatAnswer, SubmitError
     email-consent-honeypot.test.ts  # 0.3.0 features
-    form-state.test.ts              # createFormState: persistence, hydration, version, clamping
+    form-state.test.ts              # createFormState: persistence, hydration, version, clamping, reset
     progress-label.test.ts          # settings.progressLabel through translate (SSR render)
   multi-step-form.spec.ts           # Playwright: skip/clear/validation/summary/submission flows
   lead-capture.spec.ts              # Playwright: email, consent, honeypot
   demo-pages.spec.ts                # Playwright: favicon, home page, sleep-assessment route
   likert.spec.ts                    # Playwright: likert radiogroups and names, standalone likert
   validation-aria.spec.ts           # Playwright: email fix-up, required marker, per-question ring, ARIA state
+  submission-lifecycle.spec.ts      # Playwright: state cleared after success, callback transport, SubmitError
 ```
 
 ## Exports
@@ -893,5 +944,6 @@ import type { FormConfig, Question, Condition } from 'formcomp';
 - **State**: `createFormState`
 - **Utilities**: `evaluateCondition`, `isAnswered`, `validateStep`, `questionStatus`, `isStepVisible`, `collectResponses`, `validateConfig`, `isValidEmail`, `isValidUrl`, `buildSubmitPayload`, `formatAnswer`, `useTranslate`
 - **Constants**: `HONEYPOT_FIELD`
+- **Errors**: `SubmitError` (`status`, `data`)
 - **Types**: `FormConfig`, `FormSettings`, `SubmitConfig`, `SubmitAnswer`, `SubmitPayload`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `RangeValue`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `TranslateFn`, `FormStateAdapter`, `FormStateController`, `FormStateOptions`, `FormCallbacks`
 - **Context keys**: `FORM_STATE_KEY`, `TRANSLATE_KEY`, `STEP_ID_KEY`

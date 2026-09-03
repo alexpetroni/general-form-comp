@@ -156,7 +156,7 @@ export interface FormSettings {
 	successTitle?: string;
 	/** Body of the built-in success screen (or i18n key). Default: 'Your answers have been submitted.'. A `message` in the server response takes precedence. */
 	successMessage?: string;
-	/** Message shown when the POST fails (or i18n key). Server-provided error messages take precedence. */
+	/** Message shown when the submission fails — the POST, or a rejected `onFormComplete` (or i18n key). Server-provided error messages take precedence. */
 	submitErrorMessage?: string;
 	/**
 	 * Render a visually-hidden anti-spam text field. When a bot fills it, the

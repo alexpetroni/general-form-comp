@@ -554,3 +554,206 @@ LOW notes:
   the phase text (marker as a label sibling; radiogroup instead of per-radio
   attributes) are recorded above with their reasons; the tooltip half of R-8
   is PHASE-6's by plan.
+
+## PHASE-4 — Submission lifecycle: reset, storage cleanup, callback transport, error detail
+
+**Closed by PHASE-4:** R-3 (`reset()`, persisted state cleared after
+success), R-4 (callback transport without `config.submit`), R-26
+(`SubmitError`).
+
+### What changed
+
+- **`reset()` (R-3)**, `src/lib/state/form-state.svelte.ts`: responses back
+  to one empty bucket per step (`emptyBuckets()`, shared with the initial
+  state), index 0, the pending debounced save cancelled (`clearTimeout`), and
+  the storage entry removed **synchronously** with `removeItem` — no save is
+  scheduled by the reset itself, so nothing re-persists the entry.
+  `persist: false` resets in memory and never touches storage.
+  `FormStateController` declares `reset?(): void` (optional, so external
+  controllers keep compiling); `createFormState`'s return type carries a
+  non-optional `reset(): void`.
+- **Reset after success (R-3)**, `MultiStepForm.svelte`: `succeed(payload,
+  response, text?)` captures `successPayload` / `successResponse` /
+  `successText`, sets `submitState = 'succeeded'`, then calls
+  `formState.reset?.()`; `redirectTo(url)` resets **before**
+  `window.location.assign`. Used by all three success exits: POST 2xx (with
+  or without redirect), the honeypot drop (with or without `successUrl`) and
+  the callback transport. The success screen and the `success` snippet render
+  from the captured values. A failed POST or a rejected callback resets
+  nothing. The hidden-answer clearing effect in `GroupRenderer` only writes
+  when a value is defined, so it cannot re-persist after a reset.
+- **Callback transport (R-4)**: `submitForm` sets `submitState =
+  'submitting'` first (Submit disabled + `aria-busy` via
+  `NavigationButtons`), builds the payload, then awaits
+  `onFormComplete(collectResponses(...))` when `completed` is not yet set.
+  `completed = true` only after the callback settles successfully.
+  - resolved + `config.submit` → honeypot check → POST, as before;
+  - resolved + no `config.submit` → `succeed(payload, resolvedValue ?? null)`
+    with the `settings.successTitle` / `successMessage` text (a resolved
+    object does *not* override the text the way a server body does);
+    `onSubmitSuccess` is not fired (documented);
+  - rejected (either case) → `submitState = 'idle'`, `submitError =
+    settings.submitErrorMessage ?? default`, `onSubmitError(reason)`,
+    `completed` stays `false` so the next Submit calls the callback again;
+    nothing is reset.
+  `FormCallbacks.onFormComplete` is `(allResponses) => void |
+  Promise<unknown>` (a widening; existing `void` callbacks are unchanged).
+- **`SubmitError` (R-26)**, `src/lib/submission.ts`, exported from the
+  barrel: `class SubmitError extends Error { status: number; data: unknown }`,
+  `name = 'SubmitError'`, message `Request failed (<status>)` (unchanged
+  text). Non-2xx responses reach `onSubmitError` as
+  `new SubmitError(res.status, data)` where `data` is the parsed JSON body or
+  `null`; network failures and callback rejections pass through as received.
+- **Demo** (`src/routes/examples/[slug]/+page.svelte`): `onFormComplete`
+  keeps its `console.log('Form completed!', …)` and `alert`, then returns a
+  promise that settles after 300 ms; with `?fail=once` the first call rejects
+  with `new Error('demo failure')` and later calls resolve (module-level
+  `failedOnce`). `onSubmitError` logs `Submit failed <status> <data>` for a
+  `SubmitError`, `Submit failed <error>` otherwise. The home page callbacks
+  are unchanged (the sleep-assessment config has no `submit`, so Submit there
+  now shows the built-in success screen right away).
+- **Docs**: README Props (`success`), Callbacks (return type + paragraph),
+  State management (`reset()`, `FormStateController` block mirroring
+  `types.ts`), Anti-spam honeypot (state cleared), "After success" and
+  "Without a submit endpoint" subsections, Errors (`SubmitError` example),
+  `FormSettings.submitErrorMessage` comment (both README and `types.ts`),
+  project map, Exports (`SubmitError`). CHANGELOG Unreleased: Fixed (persisted
+  answers after success, dead Submit without an endpoint), Changed
+  (`onFormComplete` awaited / may return a promise, `SubmitError` instead of a
+  bare `Error`, optional `reset?()` on the controller, the demo callbacks),
+  Added (`reset()`, `SubmitError`, callback transport, tests).
+
+### Tests
+
+- Unit, `tests/unit/form-state.test.ts` (`describe('reset')`, 5 cases):
+  seeded entry + index 2 → `reset()` gives `FRESH` buckets, index 0,
+  `currentStepId 'one'`, an unknown bucket reads `{}`, and
+  `sessionStorage.getItem` is `null` immediately (no timer advance); a
+  `setResponse` + `nextStep` scheduled before `reset()` never fires
+  (`Storage.prototype.setItem` not called after 1000 ms, entry still null);
+  `persist: 'localStorage'` removes only that entry; `persist: false` calls
+  neither `removeItem` nor `setItem`; the controller keeps persisting after a
+  reset (`{ responses: { one: {}, two: { q2: 5 }, three: {} },
+  currentStepIndex: 0 }`).
+- Unit, `tests/unit/submission.test.ts` (`describe('SubmitError')`, 3 cases):
+  `instanceof Error` / `SubmitError`, `name`, `status`, `data`, message;
+  `null` data; the barrel export is a function identical to the class (the
+  first version compared two `undefined`s and passed vacuously — tightened
+  before committing).
+- Browser, `tests/submission-lifecycle.spec.ts` (6 cases). Every case first
+  waits until the example's entry actually contains the typed answer
+  (`expect.poll`), so the "entry is null" assertions prove a removal, not a
+  never-persisted state:
+  1. minimal, POST 2xx → "Message sent!" → entry null, still null after a
+     500 ms wait (longer than the 300 ms debounce) → reload → "Contact"
+     heading, both fields empty, Submit enabled, entry null;
+  2. minimal, `{ redirectUrl: '/examples' }` → after `waitForURL` the entry is
+     null; going back to `/examples/minimal` finds empty fields;
+  3. conditional (no `submit`), "No" path + email → Submit → button
+     `disabled` + `aria-busy="true"` → "Thank you!" / "Your answers have been
+     submitted." → Submit hidden → one `Form completed!` → entry null →
+     reload → "Travel Preferences", no radio checked, textarea hidden, entry
+     null;
+  4. `/examples/conditional?fail=once` → Submit → `role="alert"` with the
+     default message, Submit enabled without `aria-busy`, still on Follow-up
+     with the email intact, one `Form completed!`, entry still holds the
+     answers → Submit → "Thank you!", two `Form completed!`, entry null;
+  5. minimal, POST 500 `{ message: 'Server exploded' }` → alert text, the
+     console line `Submit failed 500 {message}` decoded through
+     `msg.args()[i].jsonValue()` equals `{ status: 500, data: { message:
+     'Server exploded' } }`, Full name intact, Submit enabled, entry intact.
+     The pre-existing "failed POST shows an error and allows retry" test is
+     untouched;
+  6. lead-capture, filled honeypot → "You are on the list!", zero requests,
+     entry null (also after 500 ms).
+- Run against the unfixed component first (commit `443a5d7` on top of
+  `cad3731`): all 6 failed as the review describes — the entry survived the
+  POST, the redirect and the honeypot drop; Submit was never disabled without
+  an endpoint; no alert after the rejection; `onSubmitError` received
+  `[Error: Request failed (500)]` with no `data`.
+- Test-first sequence in `git log`: `2863567` (reset, failing) → `4c0541c`;
+  `2af276c` (SubmitError, failing) → `cad3731`; `443a5d7` (6 browser cases +
+  demo support, failing) → `a28f33d`.
+
+### Decisions (and where they deviate from the phase text)
+
+- **`onFormComplete` still fires for a filled honeypot.** That was the 0.3.0
+  order (callback first, then the honeypot check guards the POST only) and
+  the phase says "continue with the POST as today"; unchanged. Without
+  `config.submit` there is no honeypot branch — the callback transport runs
+  and the success screen shows, which is what the bot would see anyway.
+- **A synchronous throw from `onFormComplete`** is handled like a rejection
+  (the `await` is inside the `try`). Before, it propagated out of the submit
+  handler as an uncaught error.
+- **`completed` after a failed POST** stays `true`, so a retry does not
+  re-fire `onFormComplete` (unchanged behaviour); only a rejected callback
+  leaves it `false`, as the phase requires.
+- **Redirect**: the form stays mounted in the `submitting` state after the
+  reset, so the fields render empty for the instant before the navigation.
+  Not hidden — showing the success screen first would flash it — and the
+  clearing effect writes nothing (all values are already `undefined`), so the
+  entry stays gone; case 2 asserts it after the navigation.
+- **The `success` snippet path** has no browser test (no demo passes a
+  snippet). It renders from the same captured `successPayload` /
+  `successResponse` as the built-in screen, whose post-reset rendering case 1
+  asserts.
+- **`waitForTimeout(500)`** appears three times in the new spec, always as a
+  negative wait: the assertion after it is that the entry is *still* absent
+  once the debounce window has passed.
+- The 500-case callback assertion is a new test rather than an extension of
+  the existing retry test, so that test stays byte-for-byte as it was.
+
+### Commits
+
+- `2863567` test(state): reset() empties responses and index, removes the
+  entry synchronously, cancels a pending save (failing, R-3)
+- `2af276c` test(submission): SubmitError carries status and data and is
+  exported from the barrel (failing, R-26)
+- `4c0541c` feat(state): reset() on createFormState and FormStateController
+  (R-3)
+- `cad3731` feat(submission): export SubmitError carrying the HTTP status and
+  the parsed body (R-26)
+- `443a5d7` test(e2e): persisted entry cleared after
+  POST/redirect/callback/honeypot success; callback transport busy, success,
+  error and retry; SubmitError reaches onSubmitError (failing, R-3, R-4,
+  R-26) — includes the demo page support
+- `a28f33d` fix(form): await onFormComplete as the transport, reset persisted
+  state after every success, pass SubmitError to onSubmitError (R-3, R-4,
+  R-26)
+- (this commit) docs: README submission lifecycle / reset / SubmitError,
+  CHANGELOG Unreleased, STATE.md PHASE-4, `submitErrorMessage` comment
+
+### Verification run (2026-09-03, project root)
+
+- `npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+  --fail-on-warnings` → 263 files, **0 errors, 0 warnings**.
+- `npm run test:unit` → 7 files, **137 passed** (129 existing + 5 `reset` +
+  3 `SubmitError`).
+- `npx playwright install chromium && CI=1 npm run test:e2e` → **40 passed**
+  (34 existing, untouched, + 6 in `submission-lifecycle.spec.ts`), fresh
+  build on port 4322. The new spec was run against the unfixed component
+  first: all 6 failed (see Tests).
+- `npm run package` → succeeds (the pre-existing `import.meta.env` advisory
+  remains); `dist/index.d.ts` exports `SubmitError`, `dist/submission.js`
+  defines the class, `dist/types.d.ts` has `reset?(): void` and the
+  `void | Promise<unknown>` return type, `dist/state/form-state.svelte.d.ts`
+  has `reset(): void`; no `$lib` / `$app` / `$examples` import in `dist/`.
+  `dist/` stays gitignored.
+- The whole gate was re-run once more on the final tree (after the
+  `submitErrorMessage` comment edit) with the same results.
+
+### For the next phases
+
+- **PHASE-5 (`hydrate()`)**: `emptyBuckets()` is the pure initial state;
+  `reset()` must keep removing the entry synchronously and must not schedule
+  a save. `hydrate()` after a `reset()` finds no entry and is a no-op; the
+  unit cases in `describe('reset')` construct with a seeded entry and will
+  need a `hydrate()` call before the first assertions once construction stops
+  reading storage.
+- **PHASE-6 (R-23)**: `goTo` is unchanged; the two success exits are
+  `succeed()` and `redirectTo()`, and `defaultSubmitError()` is the single
+  fallback message.
+- **PHASE-7**: the CHANGELOG Changed entries to carry into the release notes
+  are the awaited `onFormComplete` (may return a promise; a rejection aborts)
+  and `onSubmitError` receiving a `SubmitError`.
+- Nothing deferred; nothing disagreed with.
