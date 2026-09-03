@@ -1,6 +1,26 @@
 {
 	"name": "formcomp",
 	"version": "0.3.0",
+	"description": "Config-driven multi-step form component library for Svelte 5 and Tailwind CSS v4",
+	"license": "BSD-3-Clause",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/alexpetroni/general-form-comp.git"
+	},
+	"homepage": "https://github.com/alexpetroni/general-form-comp#readme",
+	"bugs": {
+		"url": "https://github.com/alexpetroni/general-form-comp/issues"
+	},
+	"keywords": [
+		"svelte",
+		"svelte5",
+		"form",
+		"multi-step",
+		"wizard",
+		"survey",
+		"tailwind",
+		"config-driven"
+	],
 	"type": "module",
 	"svelte": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -10,11 +30,19 @@
 			"svelte": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
-		"./theme.css": "./dist/theme.css"
+		"./theme.css": "./dist/theme.css",
+		"./package.json": "./package.json"
 	},
-	"files": [
-		"dist"
+	"sideEffects": [
+		"**/*.css"
 	],
+	"files": [
+		"dist",
+		"CHANGELOG.md"
+	],
+	"engines": {
+		"node": ">=20"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
