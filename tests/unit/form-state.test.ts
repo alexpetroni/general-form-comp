@@ -293,6 +293,21 @@ describe('createFormState', () => {
 			expect(unstamped.currentStepIndex).toBe(2);
 		});
 
+		it('defaults version to config.version when the option is omitted', () => {
+			seed(sessionStorage, { responses: { one: { q1: 'stale' } }, currentStepIndex: 2, version: 1 });
+
+			const state = createFormState(makeConfig(2), { storageKey: KEY, debounceMs: 300 });
+
+			// Saved under version 1, config is now version 2 → the entry is discarded…
+			expect(state.allResponses).toEqual(FRESH);
+			expect(state.currentStepIndex).toBe(0);
+
+			// …and new saves are stamped with the config version.
+			state.setResponse('one', 'q1', 'fresh');
+			vi.advanceTimersByTime(300);
+			expect(JSON.parse(sessionStorage.getItem(KEY)!).version).toBe(2);
+		});
+
 		it('an explicit version option wins over config.version', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'nine' } }, currentStepIndex: 1, version: 9 });
 
