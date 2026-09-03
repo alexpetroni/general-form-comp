@@ -309,7 +309,7 @@ interface QuestionGroup {
 |------|----------|
 | `'individual'` | (default) Each question renders in its own space with individual warning states. A `likert` question here renders as a one-row scale with its own header. |
 | `'likert-batch'` | All questions are passed to a single `LikertGroup` component as a batch table. All questions must share the same `options` array. |
-| `'inline'` | All questions render sequentially inside a single wrapper. Useful with `layout.columns` for side-by-side fields. |
+| `'inline'` | All questions render sequentially inside a single wrapper, with the same per-question warning state as `'individual'`. Useful with `layout.columns` for side-by-side fields. |
 
 ### Question
 
@@ -775,7 +775,7 @@ No hand-coded validation arrays are needed. The config is the single source of t
 
 ### Required and invalid state
 
-Every required question shows a red asterisk after its label. The marker is `aria-hidden` and, next to a `<label>`, rendered as a following sibling rather than inside it, so accessible names stay exactly the label text (`getByLabel('Name', { exact: true })` keeps resolving). Assistive technology gets the state through ARIA:
+Every required question shows a red asterisk after its label. The marker is `aria-hidden` and, next to a `<label>`, rendered as a following sibling rather than inside it, so accessible names stay exactly the label text (`getByLabel('Name', { exact: true })` keeps resolving). Likert rows show the marker in their statement cell; the row is named by that cell through `aria-labelledby`, which ignores the hidden marker. Assistive technology gets the state through ARIA:
 
 - `aria-required="true"` on the controls of a required question: the input, select or textarea; each checkbox of a `multi-select` and the `consent` box; for radio-based inputs (`single-select`, `scale`, `likert`) on the `radiogroup` — the fieldset, or the likert row — because the `radio` role supports neither `aria-required` nor `aria-invalid`.
 - `aria-invalid="true"` on the same elements while the question is in warning.

@@ -69,6 +69,21 @@ altered — the vendored semantics are in verbatim:
   pre-existing and expected (the mission requires the optional-chained
   `import.meta.env?.DEV`). `dist/` is gitignored, not committed.
 
+### Verification run, review round 1 (2026-09-03, project root)
+
+- `npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+  --fail-on-warnings` → 262 files, **0 errors, 0 warnings**.
+- `npm run test:unit` → 7 files, **129 passed** (unchanged; round 1 added
+  browser cases only).
+- `npx playwright install chromium && CI=1 npm run test:e2e` → **34 passed**
+  (33 + the home-page inline-group case; the likert case gained the marker
+  assertion), fresh build on port 4322. Run against the unfixed build first:
+  the two changed cases failed exactly as the review described (no
+  `aria-invalid` on "Usual bedtime"; no marker in the likert rows).
+- `npm run package` → succeeds (pre-existing `import.meta.env` advisory);
+  `dist/components/core/GroupRenderer.svelte` passes `warning` /
+  `describedBy` in both the inline and the individual branch.
+
 ### For the next phases
 
 - Later phases build on this 0.3.0 code as-is; the `state_referenced_locally`
@@ -344,9 +359,10 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
   those. `LikertGroup` gained `warningIds?: string[]` (ring + `aria-invalid`
   on those rows only) and `describedBy`; its `warning` prop still rings the
   whole component for standalone use, and `QuestionRenderer`'s standalone
-  `likert` branch uses it. The `inline` branch of `GroupRenderer` is untouched
-  (it never passed `warning`; PHASE-6 merges it into `individual`, which then
-  gives inline questions the per-question ring too).
+  `likert` branch uses it. The `inline` branch of `GroupRenderer` passes the same `warning` /
+  `describedBy` as `individual` (it never passed `warning` at all, so inline
+  groups had no per-question state; fixed in review round 1, see below).
+  PHASE-6 still collapses the two branches.
 - **ARIA state (R-8)**: every input component accepts `required?: boolean`
   and `describedBy?: string`. `QuestionRenderer` passes `question.required`
   and forwards `describedBy` (which `GroupRenderer` sets to the alert id for
@@ -396,7 +412,8 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
   it; Playwright's role-name computation does honour `aria-hidden`
   descendants, and no test uses `getByLabel` on a fieldset (it never matches
   fieldsets). Visual order with a tooltip is "Label ⓘ *" — the tooltip stays
-  inside the label until PHASE-6 reworks it.
+  inside the label until PHASE-6 reworks it (the round-0 review flagged the
+  order as cosmetic; PHASE-6 renders the tooltip button after the marker).
 - **Radio-based inputs carry the state on the radiogroup, not on each
   radio.** The phase says "each radio / checkbox of a group". ARIA 1.2 lists
   `aria-required` and `aria-invalid` for `radiogroup`, not `radio`, and
@@ -414,10 +431,12 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
   question that becomes visible-and-required inside the warning group is
   ringed at once; the group ring and message stay until the next attempt.
   Documented in the README; the radiogroup test asserts the immediate clear.
-- **Likert statements have no marker.** The phase scopes the marker to
-  `FieldLabel`, which LikertGroup does not use; the rows expose
-  `aria-required` instead. A visible per-row marker (or a single "all rows
-  required" note) is a candidate for a later phase.
+- **Likert statements show the marker too** (review round 1). LikertGroup
+  does not use `FieldLabel`, so its statement cell renders the same
+  `aria-hidden` asterisk when `question.required`. The row is named by that
+  cell through `aria-labelledby`, and the accessible-name algorithm skips
+  hidden descendants of a referenced element, so the row's name stays the
+  statement (the likert browser test's exact-name lookup is the canary).
 - `RangeInput`'s inner "From" / "To" `<label>`s are unchanged; the legend
   carries the marker and both fields carry the ARIA attributes.
 - The `isAnswered`-based early return means a whitespace-only url/email is
@@ -426,6 +445,30 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
   asserted `url` + `'not-an-email'` → `'ok'`, i.e. it encoded the absence of a
   url rule. It now uses a well-formed url (the intent: the email pattern must
   not reject a url input). Stated in the test commit message.
+
+### Review round 1 (2026-09-03)
+
+The round-0 review failed the ARIA DoD item on one HIGH finding and added two
+LOW notes:
+
+- **HIGH — inline groups had no per-question state** (`GroupRenderer.svelte`,
+  inline branch). Confirmed: `<QuestionRenderer {question} />` without
+  `warning` / `describedBy`, so the home page's inline "Sleep Schedule" group
+  showed the alert but no `aria-invalid`, no `aria-describedby`, no ring.
+  Fixed by passing the same two props as the individual branch (`d3ed12e`);
+  the collapse of the two branches stays with PHASE-6 as planned. Browser
+  test on `/` (`2ea3e1d`, failing first): Next with nothing filled → both
+  time inputs `aria-invalid` + `aria-describedby` → the alert id; filling
+  bedtime clears its own state while wake time stays marked.
+- **LOW — likert rows had no visible marker.** Fixed (`056e8de`): the
+  statement cell renders the `aria-hidden` asterisk when required; asserted
+  in the likert browser test (marker visible in each row, exact-name lookup
+  intact).
+- **LOW — marker order with a tooltip ("Name ⓘ *").** Deferred to PHASE-6
+  by the reviewer's own first option: the tooltip becomes a button there and
+  is rendered after the marker. Moving the `role="img"` span out of the label
+  now would drop the tooltip text from the control's accessible name, which
+  PHASE-6 replaces with a proper description; not worth an interim change.
 
 ### Tests
 
@@ -445,14 +488,17 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
   exposed via ARIA" (spinbutton named exactly by its label, `aria-required`,
   `999` kept, alert text, `aria-invalid`, `aria-describedby` → the alert's id,
   correct to `14`, optional Follow-up email has no `aria-required`).
-  `tests/validation-aria.spec.ts` (5 cases): Follow-up `not-an-email` →
+  `tests/validation-aria.spec.ts` (6 cases): Follow-up `not-an-email` →
   alert + `aria-invalid` + `aria-describedby`, fixed → submitted payload;
   all-inputs Name marker + canary, Email none, `getByRole('textbox', { name:
   'Email', exact: true })`; customized Team size `600` with a valid range →
   custom `invalidMessage`, only Team size `aria-invalid` / `aria-describedby`,
   `50` → summary; conditional `traveling` radiogroup `aria-required` →
   `aria-invalid` after Next → cleared on answer; likert batch every row
-  `aria-required`, only the unanswered row `aria-invalid`.
+  `aria-required` with a visible marker, only the unanswered row
+  `aria-invalid`; home page (sleep-assessment, inline "Sleep Schedule") →
+  both required time inputs `aria-invalid` / `aria-describedby` after Next,
+  answering one clears only that one.
 - Test-first in `git log`: `67d6729` (url, failing) → `13ad41b`; `2a34dc1`
   (progress label, failing) → `0aa57b8`; `9eae781` (6 browser cases, run
   against the unfixed build: all 6 failed — no aria attributes, clamping) →
@@ -467,7 +513,11 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
 - `9eae781` test(e2e): out-of-range numbers are kept and rejected with ARIA state; email fix-up, required marker, per-question ring (failing, R-5, R-8, R-24)
 - `f1d9ec9` fix(inputs): keep the typed number instead of clamping it to min/max (R-5)
 - `dec7568` feat(a11y): expose required/invalid state, add a required marker, ring only the failing questions (R-8)
-- (this commit) docs: README validation/ARIA/progressLabel/isValidUrl, CHANGELOG Unreleased, STATE.md PHASE-3
+- `0d1c3ea` docs: README validation/ARIA/progressLabel/isValidUrl, CHANGELOG Unreleased, STATE.md PHASE-3
+- `2ea3e1d` test(e2e): inline groups expose per-question invalid state; likert rows show the required marker (failing, R-8) — round 1
+- `d3ed12e` fix(a11y): inline groups pass warning and describedBy to their failing questions (R-8) — round 1
+- `056e8de` feat(a11y): likert rows show the visible required marker in their statement cell (R-8) — round 1
+- (this commit) docs: CHANGELOG/README/STATE for review round 1
 
 ### Verification run (2026-09-03, project root)
 
@@ -493,11 +543,14 @@ tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
 - **PHASE-6 tooltip**: the info icon stays inside the label; the required
   marker is a sibling *after* the label, so the order is "Label ⓘ *". If the
   tooltip button moves out of the label, put it after the marker.
-- **PHASE-6 inline merge**: once `inline` renders through the `individual`
-  branch, inline questions get the per-question ring / `aria-invalid` for free.
+- **PHASE-6 inline merge**: `inline` and `individual` now render identical
+  markup including the per-question ring / `aria-invalid`; the merge is a pure
+  de-duplication.
 - `LikertGroup`'s `warning` (whole-component ring) and `warningIds`
   (per-row ring) are independent; `rowWarning = warning || in warningIds`
   drives the ARIA attributes.
-- Nothing was deferred. Deviations from the phase text (marker as a label
-  sibling; radiogroup instead of per-radio attributes) are recorded above with
-  their reasons; the tooltip half of R-8 is PHASE-6's by plan.
+- Deferred: only the marker/tooltip visual order (cosmetic, see Review
+  round 1), which PHASE-6 resolves with the tooltip button. Deviations from
+  the phase text (marker as a label sibling; radiogroup instead of per-radio
+  attributes) are recorded above with their reasons; the tooltip half of R-8
+  is PHASE-6's by plan.
