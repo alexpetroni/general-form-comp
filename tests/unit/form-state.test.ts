@@ -319,4 +319,89 @@ describe('createFormState', () => {
 			expect(JSON.parse(sessionStorage.getItem(KEY)!).version).toBe(9);
 		});
 	});
+
+	describe('reset', () => {
+		it('empties the responses to one bucket per step, returns to index 0 and removes the entry synchronously', () => {
+			seed(sessionStorage, { responses: { one: { q1: 'saved' }, ghost: { x: 1 } }, currentStepIndex: 2 });
+			const state = createFormState(makeConfig(), { storageKey: KEY, debounceMs: 300 });
+			expect(state.getResponse('one', 'q1')).toBe('saved');
+			expect(state.currentStepIndex).toBe(2);
+
+			state.reset();
+
+			expect(state.allResponses).toEqual(FRESH);
+			expect(state.getResponse('one', 'q1')).toBeUndefined();
+			expect(state.getStepResponses('ghost')).toEqual({});
+			expect(state.currentStepIndex).toBe(0);
+			expect(state.currentStepId).toBe('one');
+			// Removed right away — not on the debounce timer — so nothing can
+			// re-persist it in between.
+			expect(sessionStorage.getItem(KEY)).toBeNull();
+		});
+
+		it('a save scheduled before reset() does not resurrect the entry after the timers advance', () => {
+			const setItem = vi.spyOn(Storage.prototype, 'setItem');
+			const state = createFormState(makeConfig(), { storageKey: KEY, debounceMs: 300 });
+
+			state.setResponse('one', 'q1', 'pending');
+			state.nextStep();
+			expect(sessionStorage.getItem(KEY)).toBeNull(); // still debounced
+
+			state.reset();
+			vi.advanceTimersByTime(1000);
+
+			expect(setItem).not.toHaveBeenCalled();
+			expect(sessionStorage.getItem(KEY)).toBeNull();
+			expect(state.allResponses).toEqual(FRESH);
+			expect(state.currentStepIndex).toBe(0);
+		});
+
+		it('removes the localStorage entry when persist is "localStorage" and leaves sessionStorage alone', () => {
+			seed(localStorage, { responses: { one: { q1: 'local' } }, currentStepIndex: 1 });
+			seed(sessionStorage, { responses: { one: { q1: 'session' } }, currentStepIndex: 1 });
+			const state = createFormState(makeConfig(), { storageKey: KEY, persist: 'localStorage' });
+			expect(state.getResponse('one', 'q1')).toBe('local');
+
+			state.reset();
+
+			expect(localStorage.getItem(KEY)).toBeNull();
+			expect(state.allResponses).toEqual(FRESH);
+			expect(JSON.parse(sessionStorage.getItem(KEY)!).responses.one).toEqual({ q1: 'session' });
+		});
+
+		it('persist: false resets in memory without touching storage', () => {
+			const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
+			const setItem = vi.spyOn(Storage.prototype, 'setItem');
+			const state = createFormState(makeConfig(), { storageKey: KEY, persist: false, debounceMs: 300 });
+
+			state.setResponse('one', 'q1', 'memory');
+			state.goToStep(2);
+			state.reset();
+			vi.advanceTimersByTime(1000);
+
+			expect(state.allResponses).toEqual(FRESH);
+			expect(state.currentStepIndex).toBe(0);
+			expect(removeItem).not.toHaveBeenCalled();
+			expect(setItem).not.toHaveBeenCalled();
+		});
+
+		it('the controller keeps working after reset(): new answers persist again under the fresh buckets', () => {
+			const state = createFormState(makeConfig(), { storageKey: KEY, debounceMs: 300 });
+			state.setResponse('one', 'q1', 'before');
+			state.nextStep();
+			vi.advanceTimersByTime(300);
+			expect(JSON.parse(sessionStorage.getItem(KEY)!).currentStepIndex).toBe(1);
+
+			state.reset();
+			expect(sessionStorage.getItem(KEY)).toBeNull();
+
+			state.setResponse('two', 'q2', 5);
+			vi.advanceTimersByTime(300);
+
+			expect(JSON.parse(sessionStorage.getItem(KEY)!)).toEqual({
+				responses: { one: {}, two: { q2: 5 }, three: {} },
+				currentStepIndex: 0
+			});
+		});
+	});
 });
