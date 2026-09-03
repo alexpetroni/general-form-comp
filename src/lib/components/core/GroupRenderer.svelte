@@ -92,7 +92,8 @@
 			<!-- All questions rendered sequentially in one wrapper -->
 			<div class={gridColsClass || 'space-y-6'}>
 				{#each visibleQuestions as question (question.id)}
-					<QuestionRenderer {question} />
+					{@const failing = failingIds.includes(question.id)}
+					<QuestionRenderer {question} warning={failing} describedBy={failing ? alertId : undefined} />
 				{/each}
 			</div>
 		{:else}
