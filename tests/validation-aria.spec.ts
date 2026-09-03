@@ -10,7 +10,10 @@ import { test, expect, type Page } from '@playwright/test';
  *   the field ring driven by the same prop), described by the group's alert;
  * - radio-based inputs expose required/invalid state on their radiogroup
  *   (ARIA 1.2 has no aria-required / aria-invalid on the radio role), likert
- *   batches per row.
+ *   batches per row;
+ * - an inline group (renderMode: 'inline') gets the same per-question state
+ *   as an individual one;
+ * - likert rows show the visible required marker in their statement cell.
  */
 
 async function gotoExample(page: Page, slug: string) {
@@ -155,6 +158,9 @@ test('likert batch: every row is required and only the unanswered row is marked 
 	for (const statement of STATEMENTS) {
 		await expect(row(statement)).toHaveAttribute('aria-required', 'true');
 		await expect(row(statement)).not.toHaveAttribute('aria-invalid');
+		// A required row shows the visible marker in its statement cell; the
+		// exact-name lookup above proves it does not leak into the row's name.
+		await expect(row(statement).getByText('*', { exact: true })).toBeVisible();
 	}
 
 	await pick(STATEMENTS[0], 'Agree');
@@ -170,4 +176,35 @@ test('likert batch: every row is required and only the unanswered row is marked 
 		await expect(row(statement)).not.toHaveAttribute('aria-invalid');
 		await expect(row(statement)).not.toHaveAttribute('aria-describedby');
 	}
+});
+
+test('sleep-assessment (home): failing questions of an inline group carry aria-invalid and point at the alert', async ({ page }) => {
+	// The first group of the home page form ("Sleep Schedule") is renderMode: 'inline'
+	// with two required time inputs; its questions must get the same per-question
+	// state as an individual group.
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	const bedtime = page.getByLabel('Usual bedtime');
+	const waketime = page.getByLabel('Usual wake time');
+	await expect(bedtime).toHaveAttribute('aria-required', 'true');
+	await expect(waketime).toHaveAttribute('aria-required', 'true');
+	await expect(bedtime).not.toHaveAttribute('aria-invalid');
+	await expect(bedtime).not.toHaveAttribute('aria-describedby');
+
+	await page.getByRole('button', { name: 'Next' }).click();
+	const alert = page.getByRole('alert');
+	await expect(alert).toContainText('Please complete the required fields');
+	const alertId = (await alert.getAttribute('id'))!;
+	await expect(bedtime).toHaveAttribute('aria-invalid', 'true');
+	await expect(bedtime).toHaveAttribute('aria-describedby', alertId);
+	await expect(waketime).toHaveAttribute('aria-invalid', 'true');
+	await expect(waketime).toHaveAttribute('aria-describedby', alertId);
+
+	// Answering one of them clears its own state only; the other stays marked
+	await bedtime.fill('22:30');
+	await expect(bedtime).not.toHaveAttribute('aria-invalid');
+	await expect(bedtime).not.toHaveAttribute('aria-describedby');
+	await expect(waketime).toHaveAttribute('aria-invalid', 'true');
+	await expect(waketime).toHaveAttribute('aria-describedby', alertId);
 });
