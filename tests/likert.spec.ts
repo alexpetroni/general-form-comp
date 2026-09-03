@@ -22,6 +22,15 @@ const STATEMENTS = [
 const row = (page: Page, statement: string) => page.getByRole('radiogroup', { name: statement, exact: true });
 const radio = (page: Page, statement: string, label: string) =>
 	row(page, statement).getByRole('radio', { name: label, exact: true });
+/**
+ * Select an option by statement and option label. The radio is located by
+ * role and accessible name; like the scale and card options it is sr-only
+ * inside its label, so the click goes to that wrapping label.
+ */
+async function pick(page: Page, statement: string, label: string) {
+	await radio(page, statement, label).locator('xpath=..').click();
+	await expect(radio(page, statement, label)).toBeChecked();
+}
 const submit = (page: Page) => page.getByRole('button', { name: 'Submit' });
 
 async function gotoLikert(page: Page) {
@@ -65,10 +74,10 @@ test('one option per row, then Submit completes the form', async ({ page }) => {
 	const payload = completedPayload(page);
 	await gotoLikert(page);
 
-	await radio(page, STATEMENTS[0], 'Strongly disagree').check();
-	await radio(page, STATEMENTS[1], 'Neutral').check();
-	await radio(page, STATEMENTS[2], 'Agree').check();
-	await radio(page, STATEMENTS[3], 'Strongly agree').check();
+	await pick(page, STATEMENTS[0], 'Strongly disagree');
+	await pick(page, STATEMENTS[1], 'Neutral');
+	await pick(page, STATEMENTS[2], 'Agree');
+	await pick(page, STATEMENTS[3], 'Strongly agree');
 
 	await expect(radio(page, STATEMENTS[2], 'Agree')).toBeChecked();
 	await expect(radio(page, STATEMENTS[2], 'Strongly agree')).not.toBeChecked();
@@ -82,8 +91,8 @@ test('one option per row, then Submit completes the form', async ({ page }) => {
 test('arrow keys move within a row only (the radios of a row share one name)', async ({ page }) => {
 	await gotoLikert(page);
 
-	await radio(page, STATEMENTS[0], 'Neutral').check();
-	await radio(page, STATEMENTS[1], 'Disagree').check();
+	await pick(page, STATEMENTS[0], 'Neutral');
+	await pick(page, STATEMENTS[1], 'Disagree');
 	await radio(page, STATEMENTS[0], 'Neutral').focus();
 	await page.keyboard.press('ArrowRight');
 
@@ -95,9 +104,9 @@ test('arrow keys move within a row only (the radios of a row share one name)', a
 test('an unanswered row blocks Submit with an alert', async ({ page }) => {
 	await gotoLikert(page);
 
-	await radio(page, STATEMENTS[0], 'Agree').check();
-	await radio(page, STATEMENTS[1], 'Agree').check();
-	await radio(page, STATEMENTS[3], 'Agree').check();
+	await pick(page, STATEMENTS[0], 'Agree');
+	await pick(page, STATEMENTS[1], 'Agree');
+	await pick(page, STATEMENTS[3], 'Agree');
 	await submit(page).click();
 
 	await expect(page.getByRole('alert')).toContainText('Please complete the required fields');
@@ -132,8 +141,7 @@ test('all-inputs: a standalone likert renders on its step and is listed in the s
 	await expect(row(page, statement)).toBeVisible();
 	await expect(row(page, statement).getByRole('radio')).toHaveCount(5);
 	await expect(page.locator('[aria-hidden="true"]', { hasText: 'Strongly disagree' })).toBeVisible();
-	await radio(page, statement, 'Strongly agree').check();
-	await expect(radio(page, statement, 'Strongly agree')).toBeChecked();
+	await pick(page, statement, 'Strongly agree');
 
 	await page.getByRole('radio', { name: 'Engineer' }).check();
 	await page.locator('label').filter({ hasText: 'Free' }).click();
