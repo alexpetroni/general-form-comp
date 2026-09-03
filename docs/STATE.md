@@ -316,3 +316,188 @@ discriminated `Question` union stays in the backlog).
   element to ring is the `role="radiogroup"` div. PHASE-6 prefixes ids:
   `formcomp-likert-<id>-statement` and the radio `name` are the two places.
 - Nothing from the phase was deferred; nothing disagreed with.
+
+## PHASE-3 — Honest validation and ARIA state
+
+**Closed by PHASE-3:** R-5 (no silent clamping), R-6 (url half; email arrived
+with PHASE-0), R-8 (ARIA state, required marker, per-question warning — the
+tooltip stays with PHASE-6), R-22 (progress label), R-24 (misnamed e2e test).
+
+### What changed
+
+- **No clamping (R-5)**: `NumberInput.handleInput` and `RangeInput.parseField`
+  store `parseFloat(raw)` as typed, `undefined` for empty or NaN. `min` /
+  `max` / `step` stay on the elements. `questionStatus` is unchanged for
+  numbers and now actually rejects; the browser test types `999` into
+  `trip_length` (max 365), sees the default `invalidMessage`, `999` still in
+  the field, then corrects to `14` and advances.
+- **URL validation (R-6)**: `isValidUrl(value)` in
+  `src/lib/validation/validator.ts` — `new URL(value.trim())` must parse and
+  `protocol` must be `http:` or `https:`. `questionStatus` returns `'invalid'`
+  for a non-empty malformed `text-input` with `inputType: 'url'`; empty and not
+  required stays `'ok'` (the `isAnswered` early return precedes it, like
+  email). Exported from the barrel. Note `new URL('https:example.com')` parses
+  as `https://example.com/` (special-scheme quirk); not asserted either way.
+- **Per-question warning (R-8)**: `GroupRenderer` derives `failingIds` —
+  while the group is the warning group, the visible questions whose
+  `questionStatus` is not `'ok'` — and passes `warning` / `describedBy` only to
+  those. `LikertGroup` gained `warningIds?: string[]` (ring + `aria-invalid`
+  on those rows only) and `describedBy`; its `warning` prop still rings the
+  whole component for standalone use, and `QuestionRenderer`'s standalone
+  `likert` branch uses it. The `inline` branch of `GroupRenderer` is untouched
+  (it never passed `warning`; PHASE-6 merges it into `individual`, which then
+  gives inline questions the per-question ring too).
+- **ARIA state (R-8)**: every input component accepts `required?: boolean`
+  and `describedBy?: string`. `QuestionRenderer` passes `question.required`
+  and forwards `describedBy` (which `GroupRenderer` sets to the alert id for
+  failing questions only). `QuestionGroupWrapper`'s `<p role="alert">` has
+  `id="formcomp-group-{id}-alert"`; `GroupRenderer` builds the same string.
+  `aria-required="true"` when required, `aria-invalid="true"` in warning,
+  `aria-describedby` → the alert, on: `input` / `select` / `textarea`
+  (TextInput, TextArea, SelectInput, NumberInput, both RangeInput fields,
+  TimeInput, DateInput); each checkbox of CheckboxGroup; the ConsentCheckbox
+  box; and, for radio-based inputs, the **`radiogroup`**: the `<fieldset
+  role="radiogroup">` of RadioListGroup (role moved there from the inner
+  options div), RadioCardGroup and ScaleInput, and each `role="radiogroup"`
+  row of LikertGroup (`aria-required` from `question.required`).
+- **Required marker (R-8)**: `FieldLabel` gained `required`; the marker is
+  `<span aria-hidden="true" class="ml-0.5 text-sm font-medium
+  text-(--form-error)">*</span>` rendered via a snippet. For `tag="legend"` it
+  is inside the legend; for `tag="label"` it is a **following sibling** of the
+  `<label>` (see Decisions). ConsentCheckbox wraps its FieldLabel in a `<div>`
+  so label + marker stay one flex item next to the box.
+- **Progress label (R-22)**: `FormSettings.progressLabel?: string` (default
+  `'Progress'`); `ProgressBar` gained `label?: string = 'Progress'` and renders
+  `aria-label={translate(label)}`; `MultiStepForm` passes
+  `label={settings.progressLabel}` (Svelte applies the default for
+  `undefined`).
+- **Docs**: README Validation (items 4/5, new "Required and invalid state"
+  subsection), "Email and URL validation" (renamed from "Email validation";
+  no in-README anchors pointed at it), `FormSettings` block, `Question.required`
+  comment, `QuestionType` rows for `number-input` / `range` / `text-input`,
+  i18n defaults list, Development test summary, project map (new test files,
+  `isValidUrl`, FieldLabel line), Exports. CHANGELOG Unreleased: Fixed (ARIA
+  state + marker, per-question ring, url, progress label, the misnamed test),
+  Changed (clamping — the entry the phase asked for; radiogroup role moves;
+  new optional props), Added (`progressLabel`, `isValidUrl`, tests).
+
+### Decisions (and where they deviate from the phase text)
+
+- **Marker placement.** The phase puts the asterisk inside the label and
+  names `getByLabel('Name', { exact: true })` as the canary. Playwright
+  1.61's `getByLabel` matches the `<label>`'s *full text content*
+  (`elementText`, which does not skip `aria-hidden`) and `exact` compares the
+  normalized full text, so an asterisk inside the label turns "Name" into
+  "Name *" and the canary fails — the phase's own test would have broken. The
+  marker is therefore a following sibling of `<label>` elements (still
+  "after the label text", still `aria-hidden`, and the accessible name is
+  unchanged in every implementation, not only spec-following ones). For
+  `<legend>` a sibling would render below the legend, so the marker is inside
+  it; Playwright's role-name computation does honour `aria-hidden`
+  descendants, and no test uses `getByLabel` on a fieldset (it never matches
+  fieldsets). Visual order with a tooltip is "Label ⓘ *" — the tooltip stays
+  inside the label until PHASE-6 reworks it.
+- **Radio-based inputs carry the state on the radiogroup, not on each
+  radio.** The phase says "each radio / checkbox of a group". ARIA 1.2 lists
+  `aria-required` and `aria-invalid` for `radiogroup`, not `radio`, and
+  svelte-check (`--fail-on-warnings`, part of the gate) rejects both on
+  `<input type="radio">` (`a11y_role_supports_aria_props_implicit`) — and
+  `aria-required` on a plain `<fieldset>` (role `group`). Suppressing the
+  warning would have knowingly shipped invalid ARIA, so the fieldsets of
+  RadioListGroup / RadioCardGroup / ScaleInput became `role="radiogroup"`
+  (named by their legend, as before) and LikertGroup rows already were
+  radiogroups. Checkboxes (CheckboxGroup, ConsentCheckbox) support both
+  attributes and carry them individually, as specified. Asserted in
+  `validation-aria.spec.ts` for a `single-select` and a likert batch.
+- **`failingIds` is live**, derived from the answers, not a snapshot taken
+  at Next: a corrected field drops its ring and `aria-invalid` at once, and a
+  question that becomes visible-and-required inside the warning group is
+  ringed at once; the group ring and message stay until the next attempt.
+  Documented in the README; the radiogroup test asserts the immediate clear.
+- **Likert statements have no marker.** The phase scopes the marker to
+  `FieldLabel`, which LikertGroup does not use; the rows expose
+  `aria-required` instead. A visible per-row marker (or a single "all rows
+  required" note) is a candidate for a later phase.
+- `RangeInput`'s inner "From" / "To" `<label>`s are unchanged; the legend
+  carries the marker and both fields carry the ARIA attributes.
+- The `isAnswered`-based early return means a whitespace-only url/email is
+  "missing" when required and "ok" when optional — same as email in PHASE-0.
+- The old email unit case "does not apply to plain text or url inputs"
+  asserted `url` + `'not-an-email'` → `'ok'`, i.e. it encoded the absence of a
+  url rule. It now uses a well-formed url (the intent: the email pattern must
+  not reject a url input). Stated in the test commit message.
+
+### Tests
+
+- Unit: `tests/unit/validator.test.ts` — `isValidUrl` table (7 accepted
+  incl. uppercase scheme, port, query/fragment, surrounding whitespace; 12
+  rejected incl. `ftp:`, `javascript:`, `mailto:`, `data:`, scheme-less,
+  spaces, `https://`, empty/whitespace) and `questionStatus` url cases
+  (required/optional × valid/invalid/empty, plain text untouched,
+  `validateStep` reason `'invalid'`). `tests/unit/progress-label.test.ts` —
+  `svelte/server` `render()` of `MultiStepForm` (default `'Progress'`,
+  `settings.progressLabel` through translate, default through translate) and
+  standalone `ProgressBar` (`label` prop, identity fallback). SSR render works
+  in the node environment because vite-plugin-svelte compiles for the server
+  there.
+- Browser: `tests/multi-step-form.spec.ts` — the misnamed test is now
+  "out-of-range number is kept as typed, rejected with the invalid message and
+  exposed via ARIA" (spinbutton named exactly by its label, `aria-required`,
+  `999` kept, alert text, `aria-invalid`, `aria-describedby` → the alert's id,
+  correct to `14`, optional Follow-up email has no `aria-required`).
+  `tests/validation-aria.spec.ts` (5 cases): Follow-up `not-an-email` →
+  alert + `aria-invalid` + `aria-describedby`, fixed → submitted payload;
+  all-inputs Name marker + canary, Email none, `getByRole('textbox', { name:
+  'Email', exact: true })`; customized Team size `600` with a valid range →
+  custom `invalidMessage`, only Team size `aria-invalid` / `aria-describedby`,
+  `50` → summary; conditional `traveling` radiogroup `aria-required` →
+  `aria-invalid` after Next → cleared on answer; likert batch every row
+  `aria-required`, only the unanswered row `aria-invalid`.
+- Test-first in `git log`: `67d6729` (url, failing) → `13ad41b`; `2a34dc1`
+  (progress label, failing) → `0aa57b8`; `9eae781` (6 browser cases, run
+  against the unfixed build: all 6 failed — no aria attributes, clamping) →
+  `f1d9ec9` (R-5) → `dec7568` (R-8).
+
+### Commits
+
+- `67d6729` test(validator): isValidUrl table and url questionStatus cases (failing, R-6)
+- `2a34dc1` test(settings): progressLabel is translated into the progress nav label (failing, R-22)
+- `13ad41b` feat(validator): validate inputType url with isValidUrl (R-6)
+- `0aa57b8` feat(settings): progressLabel names the progress landmark through translate (R-22)
+- `9eae781` test(e2e): out-of-range numbers are kept and rejected with ARIA state; email fix-up, required marker, per-question ring (failing, R-5, R-8, R-24)
+- `f1d9ec9` fix(inputs): keep the typed number instead of clamping it to min/max (R-5)
+- `dec7568` feat(a11y): expose required/invalid state, add a required marker, ring only the failing questions (R-8)
+- (this commit) docs: README validation/ARIA/progressLabel/isValidUrl, CHANGELOG Unreleased, STATE.md PHASE-3
+
+### Verification run (2026-09-03, project root)
+
+- `npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+  --fail-on-warnings` → 262 files, **0 errors, 0 warnings**.
+- `npm run test:unit` → 7 files, **129 passed** (101 existing + 24 url + 4
+  progress label).
+- `npx playwright install chromium && CI=1 npm run test:e2e` → **33 passed**
+  (28 existing incl. the rewritten one + 5 in `validation-aria.spec.ts`),
+  fresh build on port 4322.
+- `npm run package` → succeeds (the pre-existing `import.meta.env` advisory
+  remains); `dist/index.d.ts` exports `isValidUrl`, `dist/types.d.ts` has
+  `progressLabel`, `dist/components/inputs/LikertGroup.svelte.d.ts` has
+  `warningIds` / `describedBy`, every input in `dist/components/inputs/`
+  renders `aria-required`; no `$lib` / `$app` / `$examples` import in `dist/`.
+
+### For the next phases
+
+- **PHASE-6 ids**: the alert id is built in two places — `QuestionGroupWrapper`
+  (`formcomp-group-{id}-alert`) and `GroupRenderer` (`alertId`) — and the group
+  id in a third (`MultiStepForm.handleNext` scroll). Prefix all three together
+  with `formId`.
+- **PHASE-6 tooltip**: the info icon stays inside the label; the required
+  marker is a sibling *after* the label, so the order is "Label ⓘ *". If the
+  tooltip button moves out of the label, put it after the marker.
+- **PHASE-6 inline merge**: once `inline` renders through the `individual`
+  branch, inline questions get the per-question ring / `aria-invalid` for free.
+- `LikertGroup`'s `warning` (whole-component ring) and `warningIds`
+  (per-row ring) are independent; `rowWarning = warning || in warningIds`
+  drives the ARIA attributes.
+- Nothing was deferred. Deviations from the phase text (marker as a label
+  sibling; radiogroup instead of per-radio attributes) are recorded above with
+  their reasons; the tooltip half of R-8 is PHASE-6's by plan.

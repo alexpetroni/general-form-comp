@@ -76,7 +76,7 @@ npm run dev
 
 Visit `http://localhost:5173` to see the demo form, and `http://localhost:5173/examples` for the full example gallery.
 
-Unit tests (condition evaluator, validator, config checks, submission payload, state controller) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation, summary, submission payload) run with Playwright against a production preview build:
+Unit tests (condition evaluator, validator incl. the email/url rules, config checks, submission payload, state controller, progress label) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation and ARIA state, summary, submission payload) run with Playwright against a production preview build:
 
 ```sh
 npm run test:unit
@@ -130,7 +130,7 @@ Pass a `translate` function and *every* string in the config — question and op
 <MultiStepForm {config} translate={(key) => t(key)} />
 ```
 
-Without `translate`, all strings render as-is — plain-English configs need no setup. The built-in defaults ('Next', 'Back', 'Submit', validation and success messages) are also passed through `translate`, so provide keys via `settings` or translations for the default English strings.
+Without `translate`, all strings render as-is — plain-English configs need no setup. The built-in defaults ('Next', 'Back', 'Submit', 'Progress', validation and success messages) are also passed through `translate`, so provide keys via `settings` or translations for the default English strings.
 
 ### Callbacks
 
@@ -250,6 +250,7 @@ Form-wide behavior switches, all optional:
 ```ts
 interface FormSettings {
   showProgress?: boolean;        // show the step header (default true)
+  progressLabel?: string;        // accessible name of the step header's <nav>, default 'Progress'
   allowBackNavigation?: boolean; // when false, hides the Back button AND disables header clicks (default true)
   showSummary?: boolean;         // read-only recap with edit links before submit (default false)
   summaryLabel?: string;         // summary heading, default 'Review your answers'
@@ -321,7 +322,8 @@ interface Question {
                       // then labels/ids/steps can evolve without breaking your backend
   type: QuestionType;
   label: string;      // field label (or i18n key when translate fn is provided)
-  required?: boolean;  // if true, validation blocks progression when empty
+  required?: boolean;  // if true, validation blocks progression when empty; the label
+                       // shows a red * and the controls get aria-required
   options?: QuestionOption[];
   condition?: Condition;
   // Display
@@ -356,9 +358,9 @@ interface Question {
 | `'scale'` | `ScaleInput` | `number` | Numbered circular buttons. Uses `min`/`max` (default 1-10), `minLabel`/`maxLabel`. |
 | `'time-input'` | `TimeInput` | `string` | HTML time input. `step` is in seconds (900 = 15-minute rounding). |
 | `'date-input'` | `DateInput` | `string` | HTML date input, ISO `YYYY-MM-DD`. |
-| `'number-input'` | `NumberInput` | `number` | Supports `min`, `max`, `step`, `unit`, `placeholder`. |
-| `'range'` | `RangeInput` | `{ from, to }` | A from–to interval as two number fields. `min`/`max` bound both ends; `minLabel`/`maxLabel` label the fields (default From/To); supports `step`, `unit`. Half-filled or inverted ranges fail validation. |
-| `'text-input'` | `TextInput` | `string` | Plain text field. Supports `placeholder` and `inputType: 'email' \| 'url'`. With `inputType: 'email'`, non-empty values must match a conservative email pattern (one `@`, non-empty local part, domain with a dot) or validation fails as *invalid*. |
+| `'number-input'` | `NumberInput` | `number` | Supports `min`, `max`, `step`, `unit`, `placeholder`. The value is stored as typed: an out-of-range number is not clamped, it fails validation with `settings.invalidMessage`. |
+| `'range'` | `RangeInput` | `{ from, to }` | A from–to interval as two number fields. `min`/`max` bound both ends (validated, not clamped); `minLabel`/`maxLabel` label the fields (default From/To); supports `step`, `unit`. Half-filled, inverted or out-of-range ranges fail validation. |
+| `'text-input'` | `TextInput` | `string` | Plain text field. Supports `placeholder` and `inputType: 'email' \| 'url'`. With `inputType: 'email'`, non-empty values must match a conservative email pattern (one `@`, non-empty local part, domain with a dot); with `inputType: 'url'`, they must be an absolute `http:`/`https:` URL. Otherwise validation fails as *invalid*. |
 | `'textarea'` | `TextArea` | `string` | Multi-line. Supports `rows` (default 4), `placeholder`. |
 | `'consent'` | `ConsentCheckbox` | `boolean` | A single checkbox with the question's `label` rendered next to it (put the full consent text there). When `required`, only `true` validates — GDPR's "this specific box must be ticked". `displayValue` is `'Yes'` (passed through `translate`) or `'—'`. |
 
@@ -624,9 +626,11 @@ const config: FormConfig = {
 };
 ```
 
-## Email validation
+## Email and URL validation
 
 A `text-input` question with `inputType: 'email'` gets a real format check on top of the browser attribute (the form itself is `novalidate`): a non-empty value must have exactly one `@`, a non-empty local part, and a domain containing a dot. Anything else fails validation as *invalid* (red ring + `settings.invalidMessage`). An empty value on a non-required question stays valid. No exotic RFC 5322 corners are attempted; `isValidEmail(value)` is exported if you need the same rule elsewhere.
+
+With `inputType: 'url'` a non-empty value must parse as an absolute URL (`new URL(value.trim())`) whose scheme is `http:` or `https:`. `example.com` (no scheme), `ftp://…`, `javascript:…` and `mailto:…` are rejected as *invalid*; empty and not required stays valid. `isValidUrl(value)` is exported.
 
 ```ts
 {
@@ -764,10 +768,20 @@ Validation runs automatically when the user clicks "Next". The validator:
 1. Walks all groups and questions in the current step's config.
 2. Skips any group or question hidden by a `condition`.
 3. For each visible question with `required: true`, checks that a response exists and is non-empty.
-4. For answered `number-input` / `scale` questions, checks the value is within `min`/`max`. For `range` questions, both ends must be filled, within bounds, and not inverted. For `text-input` questions with `inputType: 'email'`, a non-empty value must be a plausible email address. A required `consent` question must be `true`.
-5. If invalid, highlights the first failing group (red ring, smooth scroll) and shows an error message via `role="alert"` — `settings.requiredMessage` for missing answers, `settings.invalidMessage` for out-of-range ones.
+4. For answered `number-input` / `scale` questions, checks the value is within `min`/`max`. Number inputs store what the user typed and never clamp it, so an out-of-range value is reported instead of being silently rewritten to the bound. For `range` questions, both ends must be filled, within bounds, and not inverted. For `text-input` questions with `inputType: 'email'`, a non-empty value must be a plausible email address; with `inputType: 'url'`, an absolute `http(s)` URL (see "Email and URL validation"). A required `consent` question must be `true`.
+5. If invalid, highlights the first failing group (red ring, smooth scroll) and shows an error message via `role="alert"` — `settings.requiredMessage` for missing answers, `settings.invalidMessage` for invalid ones. Inside that group only the questions that actually fail get the red field ring. The ring follows the live answer, so a corrected field drops it at once; the group ring and message stay until the next attempt.
 
 No hand-coded validation arrays are needed. The config is the single source of truth.
+
+### Required and invalid state
+
+Every required question shows a red asterisk after its label. The marker is `aria-hidden` and, next to a `<label>`, rendered as a following sibling rather than inside it, so accessible names stay exactly the label text (`getByLabel('Name', { exact: true })` keeps resolving). Assistive technology gets the state through ARIA:
+
+- `aria-required="true"` on the controls of a required question: the input, select or textarea; each checkbox of a `multi-select` and the `consent` box; for radio-based inputs (`single-select`, `scale`, `likert`) on the `radiogroup` — the fieldset, or the likert row — because the `radio` role supports neither `aria-required` nor `aria-invalid`.
+- `aria-invalid="true"` on the same elements while the question is in warning.
+- `aria-describedby` on those elements pointing at the group's `<p role="alert">` (id `formcomp-group-<group id>-alert`), so the message is announced together with the field.
+
+For standalone use the input components take the same as props: `required` and `describedBy` next to `warning`; `LikertGroup` also takes `warningIds` (ids of the rows to mark) so a batch flags failing rows only.
 
 ### Hidden answers
 
@@ -801,7 +815,7 @@ src/lib/
   conditions/
     evaluator.ts                    # condition evaluation engine
   validation/
-    validator.ts                    # config-driven validation, isValidEmail
+    validator.ts                    # config-driven validation, isValidEmail, isValidUrl
     config-check.ts                 # validateConfig(): dev-time config sanity checks
   components/
     core/
@@ -811,7 +825,7 @@ src/lib/
       QuestionRenderer.svelte       # maps question type to input component
       SummaryStep.svelte            # read-only recap of all answers with edit links
     inputs/
-      FieldLabel.svelte             # label / legend with optional tooltip, shared by inputs
+      FieldLabel.svelte             # label / legend with required marker and optional tooltip, shared by inputs
       RadioListGroup.svelte         # single-select vertical list
       RadioCardGroup.svelte         # single-select card grid
       CheckboxGroup.svelte          # multi-select with exclusive option logic
@@ -853,15 +867,17 @@ static/
 tests/
   unit/                             # Vitest (node; DOM tests opt into jsdom per file)
     evaluator.test.ts               # condition evaluator
-    validator.test.ts               # validation, step visibility, collectResponses
+    validator.test.ts               # validation incl. isValidUrl, step visibility, collectResponses
     config-check.test.ts            # validateConfig
     submission.test.ts              # buildSubmitPayload, formatAnswer
     email-consent-honeypot.test.ts  # 0.3.0 features
     form-state.test.ts              # createFormState: persistence, hydration, version, clamping
+    progress-label.test.ts          # settings.progressLabel through translate (SSR render)
   multi-step-form.spec.ts           # Playwright: skip/clear/validation/summary/submission flows
   lead-capture.spec.ts              # Playwright: email, consent, honeypot
   demo-pages.spec.ts                # Playwright: favicon, home page, sleep-assessment route
   likert.spec.ts                    # Playwright: likert radiogroups and names, standalone likert
+  validation-aria.spec.ts           # Playwright: email fix-up, required marker, per-question ring, ARIA state
 ```
 
 ## Exports
@@ -875,7 +891,7 @@ import type { FormConfig, Question, Condition } from 'formcomp';
 
 - **Components**: `MultiStepForm`, `FormStep`, `QuestionRenderer`, `GroupRenderer`, `SummaryStep`, all 13 input components (+ `FieldLabel`), all 4 layout components
 - **State**: `createFormState`
-- **Utilities**: `evaluateCondition`, `isAnswered`, `validateStep`, `questionStatus`, `isStepVisible`, `collectResponses`, `validateConfig`, `isValidEmail`, `buildSubmitPayload`, `formatAnswer`, `useTranslate`
+- **Utilities**: `evaluateCondition`, `isAnswered`, `validateStep`, `questionStatus`, `isStepVisible`, `collectResponses`, `validateConfig`, `isValidEmail`, `isValidUrl`, `buildSubmitPayload`, `formatAnswer`, `useTranslate`
 - **Constants**: `HONEYPOT_FIELD`
 - **Types**: `FormConfig`, `FormSettings`, `SubmitConfig`, `SubmitAnswer`, `SubmitPayload`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `RangeValue`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `TranslateFn`, `FormStateAdapter`, `FormStateController`, `FormStateOptions`, `FormCallbacks`
 - **Context keys**: `FORM_STATE_KEY`, `TRANSLATE_KEY`, `STEP_ID_KEY`
