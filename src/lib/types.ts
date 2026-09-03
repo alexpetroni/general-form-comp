@@ -257,11 +257,24 @@ export interface FormStateController extends FormStateAdapter {
 
 export interface FormCallbacks {
 	onStepComplete?: (stepId: string, stepIndex: number) => void;
-	onFormComplete?: (allResponses: Record<string, Record<string, unknown>>) => void;
+	/**
+	 * Fired once per set of answers when the user submits, before the POST.
+	 * May return a promise: the form stays busy (Submit disabled, `aria-busy`)
+	 * until it settles. Without `config.submit` the callback is the transport:
+	 * the success screen shows once it resolves (the resolved value is the
+	 * `response` of the `success` snippet); a rejection shows
+	 * `settings.submitErrorMessage`, fires `onSubmitError` and lets the user
+	 * retry, which calls it again.
+	 */
+	onFormComplete?: (allResponses: Record<string, Record<string, unknown>>) => void | Promise<unknown>;
 	onStepChange?: (fromIndex: number, toIndex: number) => void;
-	/** Fired after the configured POST succeeds (2xx). `response` is the parsed JSON body, or null. */
+	/** Fired after the configured POST succeeds (2xx). `response` is the parsed JSON body, or null. Not fired for the callback transport. */
 	onSubmitSuccess?: (payload: SubmitPayload, response: unknown) => void;
-	/** Fired when the configured POST fails (network error or non-2xx). */
+	/**
+	 * Fired when the submission fails: a non-2xx POST (as a `SubmitError` with
+	 * `status` and `data`), a network error (passed through as received), or a
+	 * rejected `onFormComplete` promise (its rejection reason).
+	 */
 	onSubmitError?: (error: unknown) => void;
 }
 

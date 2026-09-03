@@ -5,7 +5,7 @@
 	import { createFormState } from '../../state/form-state.svelte.js';
 	import { validateStep, collectResponses, isStepVisible } from '../../validation/validator.js';
 	import { validateConfig } from '../../validation/config-check.js';
-	import { buildSubmitPayload, HONEYPOT_FIELD } from '../../submission.js';
+	import { buildSubmitPayload, HONEYPOT_FIELD, SubmitError } from '../../submission.js';
 	import { cn } from '../../utils.js';
 	import ProgressBar from '../layout/ProgressBar.svelte';
 	import NavigationButtons from '../layout/NavigationButtons.svelte';
@@ -17,7 +17,7 @@
 		translate?: TranslateFn;
 		state?: FormStateController;
 		callbacks?: FormCallbacks;
-		/** Custom success screen, rendered in place of the built-in one after a successful POST */
+		/** Custom success screen, rendered in place of the built-in one after a successful submission (POST or callback transport) */
 		success?: Snippet<[SubmitPayload, unknown]>;
 	}
 
@@ -153,39 +153,76 @@
 		}
 	}
 
+	const defaultSubmitError = () =>
+		t(settings.submitErrorMessage ?? 'Something went wrong while submitting. Please try again.');
+
+	/**
+	 * Show the success screen from the captured payload / response, then clear
+	 * the answers and the persisted entry so a reload cannot resubmit them.
+	 * `text` (a server response) may override the configured title / message.
+	 */
+	function succeed(payload: SubmitPayload, response: unknown, text?: Record<string, unknown> | null) {
+		successPayload = payload;
+		successResponse = response;
+		successText = {
+			title: typeof text?.title === 'string' ? text.title : t(settings.successTitle ?? 'Thank you!'),
+			message:
+				typeof text?.message === 'string'
+					? text.message
+					: t(settings.successMessage ?? 'Your answers have been submitted.')
+		};
+		submitState = 'succeeded';
+		formState.reset?.();
+		focusStepStart();
+	}
+
+	/** Navigate away after success; the persisted state goes first so Back cannot resurrect it. */
+	function redirectTo(url: string) {
+		formState.reset?.();
+		window.location.assign(url);
+	}
+
 	async function submitForm() {
 		if (submitState !== 'idle') return;
 
-		if (!completed) {
-			completed = true;
-			callbacks?.onFormComplete?.(collectResponses(config, getResponse));
-		}
-
-		if (!config.submit) return;
+		submitState = 'submitting';
+		submitError = null;
 
 		const payload = buildSubmitPayload(config, getResponse, t, honeypotValue);
+
+		// onFormComplete runs once per set of answers (a retry after a failed
+		// POST skips it) and is awaited inside the busy state: without a submit
+		// endpoint it *is* the transport, and a rejection aborts the submission
+		// so the next Submit calls it again.
+		let callbackResult: unknown = null;
+		if (!completed) {
+			try {
+				callbackResult = (await callbacks?.onFormComplete?.(collectResponses(config, getResponse))) ?? null;
+			} catch (error) {
+				submitState = 'idle';
+				submitError = defaultSubmitError();
+				callbacks?.onSubmitError?.(error);
+				return;
+			}
+			completed = true;
+		}
+
+		if (!config.submit) {
+			succeed(payload, callbackResult);
+			return;
+		}
 
 		// A filled honeypot means a bot: mimic the normal success flow without
 		// POSTing and without firing the submit callbacks, so the bot can't
 		// tell it was dropped.
 		if (settings.honeypot && honeypotValue.trim() !== '') {
 			if (config.submit.successUrl) {
-				window.location.assign(config.submit.successUrl);
+				redirectTo(config.submit.successUrl);
 				return;
 			}
-			successPayload = payload;
-			successResponse = null;
-			successText = {
-				title: t(settings.successTitle ?? 'Thank you!'),
-				message: t(settings.successMessage ?? 'Your answers have been submitted.')
-			};
-			submitState = 'succeeded';
-			focusStepStart();
+			succeed(payload, null);
 			return;
 		}
-
-		submitState = 'submitting';
-		submitError = null;
 
 		try {
 			const res = await fetch(config.submit.url, {
@@ -204,11 +241,8 @@
 			if (!res.ok) {
 				// Show the server's error message when it sends one; otherwise the configured fallback
 				submitState = 'idle';
-				submitError =
-					typeof data?.message === 'string'
-						? data.message
-						: t(settings.submitErrorMessage ?? 'Something went wrong while submitting. Please try again.');
-				callbacks?.onSubmitError?.(new Error(`Request failed (${res.status})`));
+				submitError = typeof data?.message === 'string' ? data.message : defaultSubmitError();
+				callbacks?.onSubmitError?.(new SubmitError(res.status, data));
 				return;
 			}
 
@@ -219,25 +253,15 @@
 			const redirect =
 				(typeof data?.redirectUrl === 'string' && data.redirectUrl) || config.submit.successUrl;
 			if (redirect) {
-				window.location.assign(redirect);
+				redirectTo(redirect);
 				return;
 			}
 
-			successPayload = payload;
-			successResponse = data;
-			successText = {
-				title: typeof data?.title === 'string' ? data.title : t(settings.successTitle ?? 'Thank you!'),
-				message:
-					typeof data?.message === 'string'
-						? data.message
-						: t(settings.successMessage ?? 'Your answers have been submitted.')
-			};
-			submitState = 'succeeded';
-			focusStepStart();
+			succeed(payload, data, data);
 		} catch (error) {
 			// Network failure — don't surface browser-internal messages to the user
 			submitState = 'idle';
-			submitError = t(settings.submitErrorMessage ?? 'Something went wrong while submitting. Please try again.');
+			submitError = defaultSubmitError();
 			callbacks?.onSubmitError?.(error);
 		}
 	}
