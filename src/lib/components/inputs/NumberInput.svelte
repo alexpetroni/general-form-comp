@@ -25,18 +25,13 @@
 
 	function handleInput(e: Event) {
 		const input = e.target as HTMLInputElement;
-		const raw = input.value;
-		if (raw === '') {
-			value = undefined;
-			onchange?.(undefined);
-			return;
-		}
-		let num = parseFloat(raw);
-		if (isNaN(num)) return;
-		if (min !== undefined && num < min) num = min;
-		if (max !== undefined && num > max) num = max;
-		value = num;
-		onchange?.(num);
+		// Store what was typed (undefined for empty or not a number). Nothing is
+		// clamped to min/max: an out-of-range value must reach validation so it
+		// is reported with invalidMessage instead of being silently rewritten.
+		// min/max/step stay on the element as hints for the native spinner.
+		const num = parseFloat(input.value);
+		value = Number.isNaN(num) ? undefined : num;
+		onchange?.(value);
 	}
 </script>
 

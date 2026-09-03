@@ -41,13 +41,10 @@
 
 	const translate = useTranslate();
 
+	/** The typed number, undefined for empty or not a number. Not clamped: validation reports out-of-range ends. */
 	function parseField(raw: string): number | undefined {
-		if (raw === '') return undefined;
-		let num = parseFloat(raw);
-		if (isNaN(num)) return undefined;
-		if (min !== undefined && num < min) num = min;
-		if (max !== undefined && num > max) num = max;
-		return num;
+		const num = parseFloat(raw);
+		return Number.isNaN(num) ? undefined : num;
 	}
 
 	function handleChange(field: 'from' | 'to', e: Event) {
