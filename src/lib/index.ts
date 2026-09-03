@@ -36,7 +36,7 @@ export { validateStep, questionStatus, isStepVisible, collectResponses, isValidE
 export { validateConfig } from './validation/config-check.js';
 
 // Submission
-export { buildSubmitPayload, HONEYPOT_FIELD } from './submission.js';
+export { buildSubmitPayload, HONEYPOT_FIELD, SubmitError } from './submission.js';
 export { formatAnswer } from './format.js';
 
 // i18n
