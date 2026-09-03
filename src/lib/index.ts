@@ -32,7 +32,7 @@ export { createFormState, type FormStateOptions } from './state/form-state.svelt
 
 // Condition & Validation
 export { evaluateCondition, isAnswered } from './conditions/evaluator.js';
-export { validateStep, questionStatus, isStepVisible, collectResponses, isValidEmail } from './validation/validator.js';
+export { validateStep, questionStatus, isStepVisible, collectResponses, isValidEmail, isValidUrl } from './validation/validator.js';
 export { validateConfig } from './validation/config-check.js';
 
 // Submission
