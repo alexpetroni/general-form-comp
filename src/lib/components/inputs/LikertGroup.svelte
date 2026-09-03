@@ -78,7 +78,14 @@
 			)}
 			style="grid-template-columns: 1fr repeat({scaleOptions.length}, minmax(0, 1fr))"
 		>
-			<div id={statementId(question)} class="text-sm mb-2 sm:mb-0">{translate(question.label)}</div>
+			<div id={statementId(question)} class="text-sm mb-2 sm:mb-0">
+				{translate(question.label)}
+				{#if question.required}
+					<!-- The visible required marker, as in FieldLabel. It is aria-hidden, so
+					     the row's name (aria-labelledby → this cell) stays the statement. -->
+					<span aria-hidden="true" class="ml-0.5 font-medium text-(--form-error)">*</span>
+				{/if}
+			</div>
 			<div class="flex flex-wrap gap-2 sm:contents">
 				{#each scaleOptions as option (option.value)}
 					{@const selected = currentValue === option.value}
