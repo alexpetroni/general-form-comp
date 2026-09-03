@@ -5,9 +5,11 @@ export interface FormStateOptions {
 	storageKey?: string;
 	debounceMs?: number;
 	/**
-	 * Version stamp of the form config. When provided, persisted state saved
-	 * under a different version is discarded on hydration — bump it whenever
-	 * the config changes shape so stale answers can't attach to new questions.
+	 * Version stamp of the form config. Defaults to `config.version`. Persisted
+	 * state saved under a different version is discarded on hydration — bump it
+	 * whenever the config changes shape so stale answers can't attach to new
+	 * questions. When neither this nor `config.version` is set, any stored
+	 * entry is accepted.
 	 */
 	version?: string | number;
 }

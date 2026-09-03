@@ -76,7 +76,7 @@ npm run dev
 
 Visit `http://localhost:5173` to see the demo form, and `http://localhost:5173/examples` for the full example gallery.
 
-Unit tests (condition evaluator, validator, config checks) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation, summary, submission payload) run with Playwright against a production preview build:
+Unit tests (condition evaluator, validator, config checks, submission payload, state controller) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation, summary, submission payload) run with Playwright against a production preview build:
 
 ```sh
 npm run test:unit
@@ -155,8 +155,8 @@ const state = createFormState(config, {
   persist: 'localStorage',  // 'sessionStorage' (default) | 'localStorage' | false
   storageKey: 'my-form',    // default: 'formcomp-state'
   debounceMs: 500,          // default: 300
-  version: 3                // bump when the config changes shape — persisted
-                            // state from other versions is discarded
+  version: 3                // default: config.version — persisted state saved
+                            // under another version is discarded
 });
 ```
 
@@ -782,34 +782,78 @@ In dev mode, `MultiStepForm` runs `validateConfig(config)` and logs warnings for
 ```
 src/lib/
   index.ts                          # barrel export
-  types.ts                          # full type system
-  state/form-state.svelte.ts        # reactive state with persistence
-  conditions/evaluator.ts           # condition evaluation engine
-  validation/validator.ts           # config-driven validation
+  types.ts                          # full type system + context keys
+  i18n.ts                           # useTranslate(): translate fn from context, identity fallback
+  format.ts                         # formatAnswer(): human-readable answer values
+  submission.ts                     # buildSubmitPayload(), HONEYPOT_FIELD
+  styles.ts                         # shared Tailwind class strings for the inputs
+  utils.ts                          # cn() — clsx + tailwind-merge
+  theme.css                         # --form-* tokens (shipped as formcomp/theme.css)
+  state/
+    form-state.svelte.ts            # reactive state with persistence, version check, clamping
+  conditions/
+    evaluator.ts                    # condition evaluation engine
+  validation/
+    validator.ts                    # config-driven validation, isValidEmail
+    config-check.ts                 # validateConfig(): dev-time config sanity checks
   components/
     core/
       MultiStepForm.svelte          # top-level orchestrator
       FormStep.svelte               # renders one step from config
-      GroupRenderer.svelte           # renders a group (handles renderMode, conditions, layout)
-      QuestionRenderer.svelte        # maps question type to input component
+      GroupRenderer.svelte          # renders a group (handles renderMode, conditions, layout)
+      QuestionRenderer.svelte       # maps question type to input component
+      SummaryStep.svelte            # read-only recap of all answers with edit links
     inputs/
-      RadioListGroup.svelte          # single-select vertical list
-      RadioCardGroup.svelte          # single-select card grid
-      CheckboxGroup.svelte           # multi-select with exclusive option logic
-      LikertGroup.svelte             # likert-scale batch table
-      ScaleInput.svelte              # numbered 1-N circular buttons
-      TimeInput.svelte               # time picker with step rounding
-      NumberInput.svelte             # number with min/max/unit
-      TextInput.svelte               # text/email/url
-      TextArea.svelte                # multi-line text
-      ConsentCheckbox.svelte         # single boolean consent checkbox
+      FieldLabel.svelte             # label / legend with optional tooltip, shared by inputs
+      RadioListGroup.svelte         # single-select vertical list
+      RadioCardGroup.svelte         # single-select card grid
+      CheckboxGroup.svelte          # multi-select with exclusive option logic
+      SelectInput.svelte            # single-select native dropdown
+      LikertGroup.svelte            # likert-scale batch table
+      ScaleInput.svelte             # numbered 1-N circular buttons
+      TimeInput.svelte              # time picker with step rounding
+      DateInput.svelte              # native date picker (ISO date value)
+      NumberInput.svelte            # number with min/max/unit
+      RangeInput.svelte             # from–to interval ({ from, to })
+      TextInput.svelte              # text/email/url
+      TextArea.svelte               # multi-line text
+      ConsentCheckbox.svelte        # single boolean consent checkbox
     layout/
-      ProgressBar.svelte             # horizontal step indicator with arrows
-      NavigationButtons.svelte       # back/next buttons
-      StepContainer.svelte           # step title + intro wrapper
-      QuestionGroupWrapper.svelte    # group heading + warning ring
+      ProgressBar.svelte            # horizontal step indicator with arrows
+      NavigationButtons.svelte      # back/next buttons
+      StepContainer.svelte          # step title + intro wrapper
+      QuestionGroupWrapper.svelte   # group heading + warning ring
+src/examples/
+  index.ts                          # example registry: slug, title, description, config
+  minimal.ts                        # smallest useful form + submission
+  conditional.ts                    # conditions, cross-step visibility, step skipping
+  likert.ts                         # likert-batch group
+  all-inputs.ts                     # every input type, tooltips, summary screen
+  customized.ts                     # settings labels/messages, class hooks
+  kiosk.ts                          # linear flow: no progress header, no back
+  lead-capture.ts                   # email validation, consent, honeypot
+  sleep-assessment.ts               # larger three-step form (also the home page demo)
 src/routes/
-  +page.svelte                      # demo page
+  +layout.svelte                    # app CSS + favicon
+  +page.svelte                      # demo page: renders the sleep-assessment example
+  examples/
+    +page.svelte                    # example gallery
+    [slug]/
+      +page.svelte                  # renders one example by slug
+static/
+  favicon.svg                       # demo favicon (not part of the package)
+  robots.txt
+tests/
+  unit/                             # Vitest (node; DOM tests opt into jsdom per file)
+    evaluator.test.ts               # condition evaluator
+    validator.test.ts               # validation, step visibility, collectResponses
+    config-check.test.ts            # validateConfig
+    submission.test.ts              # buildSubmitPayload, formatAnswer
+    email-consent-honeypot.test.ts  # 0.3.0 features
+    form-state.test.ts              # createFormState: persistence, hydration, version, clamping
+  multi-step-form.spec.ts           # Playwright: skip/clear/validation/summary/submission flows
+  lead-capture.spec.ts              # Playwright: email, consent, honeypot
+  demo-pages.spec.ts                # Playwright: favicon, home page, sleep-assessment route
 ```
 
 ## Exports
