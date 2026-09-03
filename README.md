@@ -94,8 +94,8 @@ Ready-to-run `FormConfig` objects live in the `./src/examples/` directory. Each 
 |------|------|---------------|
 | `minimal` | `src/examples/minimal.ts` | Smallest useful form, plus result submission: `submit` config, question `uuid`s, success screen, error handling. |
 | `conditional` | `src/examples/conditional.ts` | `and`/`or` conditions, cross-step visibility, step-level skipping, `greater-than` and `answered` operators. |
-| `likert` | `src/examples/likert.ts` | A `likert-batch` group with a shared option set. |
-| `all-inputs` | `src/examples/all-inputs.ts` | Every built-in input type, `tooltip`, `inputType: 'email'`, group `intro`, and the summary screen. |
+| `likert` | `src/examples/likert.ts` | A `likert-batch` group with a shared option set; every row is a radiogroup named by its statement. |
+| `all-inputs` | `src/examples/all-inputs.ts` | Every built-in input type (including a standalone `likert`), `tooltip`, `inputType: 'email'`, group `intro`, and the summary screen. |
 | `customized` | `src/examples/customized.ts` | All `settings` labels/messages, summary customization, and `class`/`optionClass` styling hooks. |
 | `kiosk` | `src/examples/kiosk.ts` | Linear one-way flow: `showProgress: false`, `allowBackNavigation: false`. |
 | `lead-capture` | `src/examples/lead-capture.ts` | Email-format validation, a required `consent` checkbox, and the anti-spam honeypot. |
@@ -306,7 +306,7 @@ interface QuestionGroup {
 
 | Mode | Behavior |
 |------|----------|
-| `'individual'` | (default) Each question renders in its own space with individual warning states. |
+| `'individual'` | (default) Each question renders in its own space with individual warning states. A `likert` question here renders as a one-row scale with its own header. |
 | `'likert-batch'` | All questions are passed to a single `LikertGroup` component as a batch table. All questions must share the same `options` array. |
 | `'inline'` | All questions render sequentially inside a single wrapper. Useful with `layout.columns` for side-by-side fields. |
 
@@ -352,7 +352,7 @@ interface Question {
 | `'single-select'` | `RadioListGroup` or `RadioCardGroup` | `string` | Use `displayVariant: 'card'` for card layout. Requires `options`. |
 | `'multi-select'` | `CheckboxGroup` | `string[]` | Requires `options`. Supports `exclusive` options. |
 | `'select'` | `SelectInput` | `string` | Native dropdown, good for long option lists. Requires `options`; `placeholder` is the empty first option. |
-| `'likert'` | `LikertGroup` | `string` | Designed for use inside a group with `renderMode: 'likert-batch'`. Requires `options`. |
+| `'likert'` | `LikertGroup` | `string` | A statement rated on a shared scale. Designed for groups with `renderMode: 'likert-batch'` (one table, one header); it also renders standalone in a default group as a one-row scale with its own header. Each row is a `radiogroup` named by its statement and every radio is named by its option label at every viewport. Requires `options`. |
 | `'scale'` | `ScaleInput` | `number` | Numbered circular buttons. Uses `min`/`max` (default 1-10), `minLabel`/`maxLabel`. |
 | `'time-input'` | `TimeInput` | `string` | HTML time input. `step` is in seconds (900 = 15-minute rounding). |
 | `'date-input'` | `DateInput` | `string` | HTML date input, ISO `YYYY-MM-DD`. |
@@ -775,7 +775,14 @@ When a question becomes hidden by a condition, its stored answer is cleared, so 
 
 ### Config sanity checks
 
-In dev mode, `MultiStepForm` runs `validateConfig(config)` and logs warnings for duplicate ids, select questions without options, mismatched `likert-batch` option sets, conditions referencing unknown questions or steps, and comparison operators missing a `value`. You can also call `validateConfig` yourself (e.g. in a unit test for your configs).
+In dev mode, `MultiStepForm` runs `validateConfig(config)` once and logs each warning with a `[formcomp]` prefix. You can also call `validateConfig` yourself: it returns a `string[]`, so `expect(validateConfig(config)).toEqual([])` in a unit test keeps your configs honest (the shipped examples are tested this way). It warns about:
+
+- **Structure**: no steps, a step without groups, a group without questions; duplicate step, group and question ids; duplicate `uuid`s.
+- **Options**: a `single-select`, `multi-select`, `select` or `likert` question without `options`; a `consent` question with `options`; a `likert-batch` group containing a non-`likert` question, or likert rows whose option sets differ.
+- **Condition references**: an unknown `stepId` or `questionId`; a comparison operator without a `value`; a step `condition` that resolves to the step itself (a simple condition with no `stepId`, or with the step's own id — a step condition must reference another step).
+- **Comparisons that can never match**, checked against the target question's type: `equals` / `not-equals` with a non-number value on a `scale` or `number-input`, with a non-boolean value on a `consent`, with any value on a `range` (object identity), or with a value outside the target's option values; `includes` / `not-includes` on anything but a `multi-select`, or with a value outside its option values; `greater-than` / `less-than` on a non-numeric target, or with a non-number value.
+
+Comparison checks are skipped when the target question is unknown (that warning already covers it). Each message names the step, group or question the condition sits on and the target question involved.
 
 ## Project structure
 
@@ -854,6 +861,7 @@ tests/
   multi-step-form.spec.ts           # Playwright: skip/clear/validation/summary/submission flows
   lead-capture.spec.ts              # Playwright: email, consent, honeypot
   demo-pages.spec.ts                # Playwright: favicon, home page, sleep-assessment route
+  likert.spec.ts                    # Playwright: likert radiogroups and names, standalone likert
 ```
 
 ## Exports

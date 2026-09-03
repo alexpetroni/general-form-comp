@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- A `likert` question outside a `likert-batch` group now renders (a one-row scale with its own header) and can be answered. `QuestionRenderer` had no `'likert'` branch, so such a question rendered nothing and, when `required`, blocked the step forever with the error pointing at an empty group.
+- Likert accessibility: every radio's accessible name is its option label at every viewport (on desktop the label text is visually hidden with `sr-only` instead of `display:none`; the bullet is `aria-hidden`), each statement row is a `radiogroup` named by its statement (`aria-labelledby`), and the desktop scale header is `aria-hidden`. Before, desktop radios were all named "•" and the statement was never announced.
+
 ### Changed
 
+- `validateConfig` message prefixes for group- and question-level conditions now name the step too (`Condition on question "q" in step "s" …`). A non-`likert` question inside a `likert-batch` group is reported by its own warning instead of as a "must share the same options" mismatch; option sets are compared among the likert rows only.
 - `createFormState` defaults the persistence `version` to `config.version`; pass the option only to override it. A config that carries a `version` now invalidates in-progress answers persisted under another version even when the caller does not forward it (the examples route did not).
 - `package.json` metadata: `description`, `license` (BSD-3-Clause), `repository`, `homepage`, `bugs`, `keywords`, `engines.node >= 20`, `sideEffects` limited to CSS, a `./package.json` export, and `CHANGELOG.md` is shipped with the package. The version is unchanged.
 - The demo favicon moved from `src/lib/assets/` to `static/`; it no longer ships in the package (`dist/assets/` is gone).
@@ -11,6 +17,8 @@
 
 ### Added
 
+- `validateConfig` warns about a whole family of config mistakes the runtime cannot recover from: a step `condition` that resolves to the step itself; `equals` / `not-equals` with a non-number value on a `scale` or `number-input`, a non-boolean value on a `consent`, any value on a `range`, or a value outside the target's option values; `includes` / `not-includes` on a non-`multi-select` target or with a value outside its options; `greater-than` / `less-than` on a non-numeric target or with a non-number value; empty `steps`, a step without groups, a group without questions; a non-`likert` question in a `likert-batch` group. Checks are skipped for unknown targets and valueless operators, which existing warnings already cover.
+- The `all-inputs` example has a standalone `likert` question; a unit test asserts every shipped example validates without warnings; `tests/likert.spec.ts` covers likert radiogroups, names at desktop and mobile viewports, arrow keys, submission, the required-row alert and the standalone likert.
 - Unit tests can import rune modules: the Vitest config compiles `*.svelte.ts` through the Svelte plugin, and a test opts into jsdom per file. `createFormState` (buckets, navigation bounds, debounced persistence, hydration, version invalidation, index clamping, corrupt storage) is covered by `tests/unit/form-state.test.ts`.
 - Browser tests for the demo shell: favicon, home page and the `sleep-assessment` route.
 - README "Project structure" lists every file under `src/lib/`, `src/examples/`, `src/routes/`, `static/` and `tests/`.
