@@ -21,6 +21,7 @@ export function createFormState(
 	readonly currentStepId: string;
 	readonly stepCount: number;
 	readonly allResponses: Record<string, Record<string, unknown>>;
+	reset(): void;
 } {
 	const {
 		persist = 'sessionStorage',
@@ -29,11 +30,15 @@ export function createFormState(
 		version = config.version
 	} = options;
 
-	// Initialize responses structure
-	const initial: Record<string, Record<string, unknown>> = {};
-	for (const step of config.steps) {
-		initial[step.id] = {};
-	}
+	// One empty bucket per step
+	const emptyBuckets = () => {
+		const buckets: Record<string, Record<string, unknown>> = {};
+		for (const step of config.steps) {
+			buckets[step.id] = {};
+		}
+		return buckets;
+	};
+	const initial = emptyBuckets();
 
 	// Try to hydrate from storage
 	let hydrated = initial;
@@ -136,6 +141,27 @@ export function createFormState(
 
 		get allResponses() {
 			return responses;
+		},
+
+		/**
+		 * Back to the initial state: one empty bucket per step, index 0, any
+		 * pending debounced save cancelled, and the storage entry removed right
+		 * away (`removeItem`, not on the debounce timer) so nothing can
+		 * re-persist it. `MultiStepForm` calls this after a successful
+		 * submission.
+		 */
+		reset() {
+			clearTimeout(saveTimer);
+			saveTimer = undefined;
+			responses = emptyBuckets();
+			currentStepIndex = 0;
+			if (!persist || typeof window === 'undefined') return;
+			try {
+				const storage = persist === 'sessionStorage' ? sessionStorage : localStorage;
+				storage.removeItem(storageKey);
+			} catch {
+				// storage unavailable
+			}
 		}
 	};
 }

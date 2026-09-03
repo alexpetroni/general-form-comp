@@ -244,6 +244,13 @@ export interface FormStateController extends FormStateAdapter {
 	nextStep(): void;
 	prevStep(): void;
 	goToStep(index: number): void;
+	/**
+	 * Clear every answer, return to the first step and drop the persisted
+	 * entry. `MultiStepForm` calls it after a successful submission so a reload
+	 * cannot resubmit the same answers. Optional so existing controllers keep
+	 * compiling; `createFormState` always implements it.
+	 */
+	reset?(): void;
 }
 
 // ── Callbacks ──
