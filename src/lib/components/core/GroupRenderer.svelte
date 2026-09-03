@@ -5,6 +5,7 @@
 		type FormStateAdapter, type QuestionGroup
 	} from '../../types.js';
 	import { evaluateCondition } from '../../conditions/evaluator.js';
+	import { questionStatus } from '../../validation/validator.js';
 	import QuestionGroupWrapper from '../layout/QuestionGroupWrapper.svelte';
 	import QuestionRenderer from './QuestionRenderer.svelte';
 	import LikertGroup from '../inputs/LikertGroup.svelte';
@@ -22,6 +23,10 @@
 
 	const isWarning = $derived(warningGroupId === group.id);
 
+	// Id of the alert rendered by QuestionGroupWrapper while the group is in
+	// warning; failing controls reference it with aria-describedby.
+	const alertId = $derived(`formcomp-group-${group.id}-alert`);
+
 	// Filter visible questions based on conditions
 	const visibleQuestions = $derived(
 		group.questions.filter((q) => {
@@ -32,6 +37,18 @@
 				stepId
 			);
 		})
+	);
+
+	// While this is the warning group, only the questions that actually fail
+	// get the field ring and aria-invalid — not every question in the group.
+	// Derived from the live answers, so a corrected field drops its ring at
+	// once; the group ring and message stay until the next attempt.
+	const failingIds = $derived(
+		isWarning
+			? visibleQuestions
+					.filter((q) => questionStatus(q, state.getResponse(stepId, q.id)) !== 'ok')
+					.map((q) => q.id)
+			: []
 	);
 
 	// Check if group itself is visible
@@ -70,7 +87,7 @@
 	<QuestionGroupWrapper id={group.id} label={group.label} intro={group.intro} warning={isWarning} {warningMessage} class={group.class}>
 		{#if group.renderMode === 'likert-batch'}
 			<!-- All questions rendered as a single LikertGroup -->
-			<LikertGroup questions={visibleQuestions} warning={isWarning} />
+			<LikertGroup questions={visibleQuestions} warningIds={failingIds} describedBy={isWarning ? alertId : undefined} />
 		{:else if group.renderMode === 'inline'}
 			<!-- All questions rendered sequentially in one wrapper -->
 			<div class={gridColsClass || 'space-y-6'}>
@@ -82,7 +99,8 @@
 			<!-- individual (default): each question gets its own space -->
 			<div class={gridColsClass || 'space-y-6'}>
 				{#each visibleQuestions as question (question.id)}
-					<QuestionRenderer {question} warning={isWarning} />
+					{@const failing = failingIds.includes(question.id)}
+					<QuestionRenderer {question} warning={failing} describedBy={failing ? alertId : undefined} />
 				{/each}
 			</div>
 		{/if}

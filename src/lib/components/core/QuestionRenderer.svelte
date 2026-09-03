@@ -22,9 +22,11 @@
 	interface Props {
 		question: Question;
 		warning?: boolean;
+		/** Id of the element describing the question while it is in warning (the group's alert). */
+		describedBy?: string;
 	}
 
-	let { question, warning = false }: Props = $props();
+	let { question, warning = false, describedBy }: Props = $props();
 
 	const state = getContext<FormStateAdapter>(FORM_STATE_KEY);
 	const stepId = getContext<string>(STEP_ID_KEY);
@@ -49,6 +51,8 @@
 			label={question.label}
 			tooltip={question.tooltip}
 			{warning}
+			required={question.required}
+			{describedBy}
 			columns={question.layout?.columns}
 			class={question.class}
 			optionClass={question.optionClass}
@@ -62,6 +66,8 @@
 			label={question.label}
 			tooltip={question.tooltip}
 			{warning}
+			required={question.required}
+			{describedBy}
 			class={question.class}
 			optionClass={question.optionClass}
 		/>
@@ -75,6 +81,8 @@
 		label={question.label}
 		tooltip={question.tooltip}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 		optionClass={question.optionClass}
 	/>
@@ -88,12 +96,14 @@
 		tooltip={question.tooltip}
 		placeholder={question.placeholder}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'likert'}
 	<!-- A likert question outside a likert-batch group: a one-row scale with its
 	     own header. LikertGroup reads the answer from context, like this renderer. -->
-	<LikertGroup questions={[question]} {warning} class={question.class} />
+	<LikertGroup questions={[question]} {warning} {describedBy} class={question.class} />
 {:else if question.type === 'scale'}
 	<ScaleInput
 		min={question.min ?? 1}
@@ -106,6 +116,8 @@
 		minLabel={question.minLabel}
 		maxLabel={question.maxLabel}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 		optionClass={question.optionClass}
 	/>
@@ -119,6 +131,8 @@
 		step={question.step}
 		placeholder={question.placeholder}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'date-input'}
@@ -129,6 +143,8 @@
 		label={question.label}
 		tooltip={question.tooltip}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'number-input'}
@@ -144,6 +160,8 @@
 		placeholder={question.placeholder}
 		unit={question.unit}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'range'}
@@ -160,6 +178,8 @@
 		minLabel={question.minLabel ?? 'From'}
 		maxLabel={question.maxLabel ?? 'To'}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'text-input'}
@@ -172,6 +192,8 @@
 		type={question.inputType ?? 'text'}
 		placeholder={question.placeholder}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'consent'}
@@ -182,6 +204,8 @@
 		label={question.label}
 		tooltip={question.tooltip}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {:else if question.type === 'textarea'}
@@ -194,6 +218,8 @@
 		placeholder={question.placeholder}
 		rows={question.rows}
 		{warning}
+		required={question.required}
+		{describedBy}
 		class={question.class}
 	/>
 {/if}

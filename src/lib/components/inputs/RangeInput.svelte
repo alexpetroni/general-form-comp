@@ -20,6 +20,10 @@
 		/** Label above the upper field. Default: 'To'. */
 		maxLabel?: string;
 		warning?: boolean;
+		/** Mark the control(s) as required (aria-required) and show the label marker. */
+		required?: boolean;
+		/** Id of the element describing the control(s), e.g. the group's error message (aria-describedby). */
+		describedBy?: string;
 		class?: string;
 	}
 
@@ -36,6 +40,8 @@
 		minLabel = 'From',
 		maxLabel = 'To',
 		warning = false,
+		required = false,
+		describedBy,
 		class: className
 	}: Props = $props();
 
@@ -61,7 +67,7 @@
 
 <fieldset class={className} aria-label={label ? undefined : name}>
 	{#if label}
-		<FieldLabel tag="legend" text={label} {tooltip} />
+		<FieldLabel tag="legend" text={label} {tooltip} {required} />
 	{/if}
 	<div class="grid grid-cols-2 gap-4">
 		{#each [['from', minLabel], ['to', maxLabel]] as const as [field, fieldLabel] (field)}
@@ -77,6 +83,9 @@
 						{max}
 						{step}
 						value={value?.[field] ?? ''}
+						aria-required={required || undefined}
+						aria-invalid={warning || undefined}
+						aria-describedby={describedBy}
 						onchange={(e) => handleChange(field, e)}
 						class={cn(inputBase, unit && 'pr-12', warning && warningField)}
 					/>

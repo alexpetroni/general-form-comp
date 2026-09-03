@@ -9,10 +9,12 @@
 		forId?: string;
 		text: string;
 		tooltip?: string;
+		/** Show the required marker (a red asterisk) after the label text. */
+		required?: boolean;
 		class?: string;
 	}
 
-	let { tag = 'label', forId, text, tooltip, class: className }: Props = $props();
+	let { tag = 'label', forId, text, tooltip, required = false, class: className }: Props = $props();
 
 	const translate = useTranslate();
 </script>
@@ -23,6 +25,9 @@
 	class={cn(labelBase, tag === 'legend' && 'mb-3', className)}
 >
 	{translate(text)}
+	{#if required && tag === 'legend'}
+		{@render marker()}
+	{/if}
 	{#if tooltip}
 		<span
 			title={translate(tooltip)}
@@ -37,3 +42,16 @@
 		</span>
 	{/if}
 </svelte:element>
+{#if required && tag === 'label'}
+	{@render marker()}
+{/if}
+
+<!-- The marker is aria-hidden so the accessible name stays the label text.
+     Next to a <label> it is rendered as a following sibling, not inside: tools
+     that read a label's full text content (Playwright's getByLabel, for one)
+     ignore aria-hidden, so an asterisk inside the label would change the label
+     text they see. A <legend> is followed by the fieldset content on a new
+     line, so its marker sits inside the legend. -->
+{#snippet marker()}
+	<span aria-hidden="true" class="ml-0.5 text-sm font-medium text-(--form-error)">*</span>
+{/snippet}

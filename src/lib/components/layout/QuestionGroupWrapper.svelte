@@ -41,7 +41,8 @@
 		)}
 	>
 		{#if warning}
-			<p role="alert" class="mb-4 text-sm font-medium text-(--form-error)">
+			<!-- Failing controls point here with aria-describedby (GroupRenderer builds the same id) -->
+			<p id="formcomp-group-{id}-alert" role="alert" class="mb-4 text-sm font-medium text-(--form-error)">
 				{translate(warningMessage)}
 			</p>
 		{/if}
