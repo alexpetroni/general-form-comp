@@ -5,7 +5,7 @@
 	import { createFormState } from '../../state/form-state.svelte.js';
 	import { validateStep, collectResponses, isStepVisible } from '../../validation/validator.js';
 	import { validateConfig } from '../../validation/config-check.js';
-	import { buildSubmitPayload } from '../../submission.js';
+	import { buildSubmitPayload, HONEYPOT_FIELD } from '../../submission.js';
 	import { cn } from '../../utils.js';
 	import ProgressBar from '../layout/ProgressBar.svelte';
 	import NavigationButtons from '../layout/NavigationButtons.svelte';
@@ -23,10 +23,13 @@
 
 	let { config, translate: translateFn, state: externalState, callbacks, success }: Props = $props();
 
-	// These are intentionally captured once at mount time — to swap configs at
-	// runtime, re-create the component with {#key}.
+	// The form state is intentionally captured once at mount time — to swap
+	// configs at runtime, re-create the component with {#key}. That capture is
+	// the documented API contract, so the initial-value warning is suppressed
+	// rather than "fixed" into reactivity the component does not promise (L-1).
+	// svelte-ignore state_referenced_locally
 	const formState = externalState ?? createFormState(config, { version: config.version });
-	const settings = config.settings ?? {};
+	const settings = $derived(config.settings ?? {});
 	const t = (key: string) => (translateFn ? translateFn(key) : key);
 
 	let rootEl = $state<HTMLDivElement>();
@@ -39,13 +42,20 @@
 	let successPayload = $state<SubmitPayload | null>(null);
 	let successResponse = $state<unknown>(null);
 	let successText = $state<{ title: string; message: string } | null>(null);
+	let honeypotValue = $state('');
 
 	setContext(FORM_STATE_KEY, formState);
+	// Context is init-only in Svelte — a runtime translate swap is not part of
+	// the API (re-create with {#key}), so the initial capture is deliberate.
+	// svelte-ignore state_referenced_locally
 	if (translateFn) {
+		// svelte-ignore state_referenced_locally
 		setContext(TRANSLATE_KEY, translateFn);
 	}
 
 	if (import.meta.env?.DEV) {
+		// One-shot authoring check of the INITIAL config, on purpose.
+		// svelte-ignore state_referenced_locally
 		for (const warning of validateConfig(config)) {
 			console.warn(`[formcomp] ${warning}`);
 		}
@@ -64,13 +74,17 @@
 
 	// A persisted step index can point at a step that current answers hide —
 	// snap back to the nearest earlier visible step (or the first one). Runs
-	// once at mount, before the first render.
+	// once at mount, before the first render — the initial-config reads below
+	// are that one-shot on purpose (L-1).
 	{
 		const idx = formState.currentStepIndex;
+		// svelte-ignore state_referenced_locally
 		const step = config.steps[idx];
 		if (step && !isStepVisible(step, getResponse)) {
+			// svelte-ignore state_referenced_locally
 			let target = config.steps.findIndex((s) => isStepVisible(s, getResponse));
 			for (let i = idx - 1; i >= 0; i--) {
+				// svelte-ignore state_referenced_locally
 				if (isStepVisible(config.steps[i], getResponse)) {
 					target = i;
 					break;
@@ -149,7 +163,27 @@
 
 		if (!config.submit) return;
 
-		const payload = buildSubmitPayload(config, getResponse, t);
+		const payload = buildSubmitPayload(config, getResponse, t, honeypotValue);
+
+		// A filled honeypot means a bot: mimic the normal success flow without
+		// POSTing and without firing the submit callbacks, so the bot can't
+		// tell it was dropped.
+		if (settings.honeypot && honeypotValue.trim() !== '') {
+			if (config.submit.successUrl) {
+				window.location.assign(config.submit.successUrl);
+				return;
+			}
+			successPayload = payload;
+			successResponse = null;
+			successText = {
+				title: t(settings.successTitle ?? 'Thank you!'),
+				message: t(settings.successMessage ?? 'Your answers have been submitted.')
+			};
+			submitState = 'succeeded';
+			focusStepStart();
+			return;
+		}
+
 		submitState = 'submitting';
 		submitError = null;
 
@@ -265,6 +299,20 @@
 	{/if}
 
 	<form novalidate onsubmit={handleSubmit}>
+		{#if settings.honeypot}
+			<!-- Anti-spam honeypot: kept out of sight and out of the tab order but
+			     NOT display:none, so naive bots still fill it. -->
+			<div class="absolute -left-[9999px] size-px overflow-hidden" aria-hidden="true">
+				<input
+					type="text"
+					name={HONEYPOT_FIELD}
+					tabindex="-1"
+					autocomplete="off"
+					value={honeypotValue}
+					oninput={(e) => (honeypotValue = (e.target as HTMLInputElement).value)}
+				/>
+			</div>
+		{/if}
 		{#if showingSummary}
 			<SummaryStep
 				{config}
