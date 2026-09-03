@@ -23,6 +23,9 @@
 
 	const scaleOptions = $derived(questions[0]?.options ?? []);
 
+	/** DOM id of a statement cell; the row's radiogroup is labelled by it. */
+	const statementId = (question: Question) => `formcomp-likert-${question.id}-statement`;
+
 	function getQuestionValue(questionId: string): string | undefined {
 		return state.getResponse(stepId, questionId) as string | undefined;
 	}
@@ -39,9 +42,10 @@
 		className
 	)}
 >
-	<!-- Scale header -->
+	<!-- Scale header (desktop only). Hidden from assistive technology: every
+	     radio already carries its option label as its accessible name. -->
 	{#if scaleOptions.length > 0}
-		<div class="hidden sm:grid sm:gap-2" style="grid-template-columns: 1fr repeat({scaleOptions.length}, minmax(0, 1fr))">
+		<div aria-hidden="true" class="hidden sm:grid sm:gap-2" style="grid-template-columns: 1fr repeat({scaleOptions.length}, minmax(0, 1fr))">
 			<div></div>
 			{#each scaleOptions as option (option.value)}
 				<div class="text-center text-xs text-(--form-muted) font-medium">{translate(option.label)}</div>
@@ -49,11 +53,17 @@
 		</div>
 	{/if}
 
-	<!-- Question rows -->
+	<!-- Question rows: one radiogroup per statement, named by the statement.
+	     The radios of a row share one name, so arrow keys stay within the row. -->
 	{#each questions as question (question.id)}
 		{@const currentValue = getQuestionValue(question.id)}
-		<div class="sm:grid sm:gap-2 sm:items-center border-b border-(--form-border) pb-3 last:border-0 last:pb-0" style="grid-template-columns: 1fr repeat({scaleOptions.length}, minmax(0, 1fr))">
-			<div class="text-sm mb-2 sm:mb-0">{translate(question.label)}</div>
+		<div
+			role="radiogroup"
+			aria-labelledby={statementId(question)}
+			class="sm:grid sm:gap-2 sm:items-center border-b border-(--form-border) pb-3 last:border-0 last:pb-0"
+			style="grid-template-columns: 1fr repeat({scaleOptions.length}, minmax(0, 1fr))"
+		>
+			<div id={statementId(question)} class="text-sm mb-2 sm:mb-0">{translate(question.label)}</div>
 			<div class="flex flex-wrap gap-2 sm:contents">
 				{#each scaleOptions as option (option.value)}
 					{@const selected = currentValue === option.value}
@@ -75,8 +85,11 @@
 							onchange={() => setQuestionValue(question.id, option.value)}
 							class="sr-only"
 						/>
-						<span class="sm:hidden">{translate(option.label)}</span>
-						<span class="hidden sm:inline">&bull;</span>
+						<!-- The option label stays in the DOM at every viewport; on desktop it
+						     is only visually hidden (sr-only, never display:none) so it remains
+						     the radio's accessible name. The bullet is decoration. -->
+						<span class="sm:sr-only">{translate(option.label)}</span>
+						<span class="hidden sm:inline" aria-hidden="true">&bull;</span>
 					</label>
 				{/each}
 			</div>
