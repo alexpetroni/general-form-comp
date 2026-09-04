@@ -74,9 +74,9 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:5173` to see the demo form, and `http://localhost:5173/examples` for the full example gallery.
+Visit `http://localhost:5173` to see the demo form, and `http://localhost:5173/examples` for the full example gallery. `http://localhost:5173/dev/two-forms` renders two `MultiStepForm` instances of the minimal example on one page with non-persisting controllers — the test bed for per-instance DOM ids (see [DOM ids](#dom-ids-and-several-forms-on-a-page)); it is not linked from the gallery.
 
-Unit tests (condition evaluator, validator incl. the email/url rules, config checks, submission payload, state controller, progress label) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation and ARIA state, summary, submission payload and lifecycle) run with Playwright against a production preview build:
+Unit tests (condition evaluator, validator incl. the email/url rules, config checks incl. the shipped examples, submission payload and `SubmitError`, state controller incl. `hydrate()` / `reset()`, progress label, `TranslateFn`) run with Vitest; browser tests (step skipping, conditional show/hide, answer clearing, validation and ARIA state, likert, tooltips, summary, submission payload and lifecycle, SSR hydration, two forms on one page, callbacks) run with Playwright against a production preview build:
 
 ```sh
 npm run test:unit
@@ -169,6 +169,8 @@ state.reset();   // every answer cleared, back to the first step, storage entry 
 
 Construction never touches storage: a new controller always starts with empty answers on the first step, on the server and in the browser alike. `hydrate()` reads the persisted entry — the `version` must match, the step index is clamped to the config, corrupt JSON is ignored — and applies it without scheduling a save. It is idempotent: the first call in a browser does the work; later calls, and every call on the server or with `persist: false`, are no-ops, so answers given in the meantime are never overwritten. `MultiStepForm` calls it once after mount.
 
+Besides the `FormStateController` members, the built-in controller exposes the read-only `currentStepId`, `stepCount` and `allResponses` (the live responses object, keyed by step id then question id).
+
 **SSR:** the server always renders the first step; persisted answers are restored right after hydration, so the first step paints and the persisted step then swaps in. To avoid the visible swap, render the form client-only (`{#if browser}` or `export const ssr = false` on the page).
 
 `reset()` puts the controller back to its initial state: one empty bucket per step, index 0, any pending debounced save cancelled, and the storage entry removed synchronously so nothing re-persists it. `MultiStepForm` calls it after a successful submission (see [After success](#after-success)); call it yourself for a "Start over" button.
@@ -218,6 +220,8 @@ Override any of them in your own CSS to retheme the whole form:
 ```
 
 When using input components standalone (outside `MultiStepForm`), wrap them in an element with `class="formcomp"` so the variables apply.
+
+`theme.css` also ships a `.dark .formcomp` block with dark values for the same tokens; it applies when a `.dark` ancestor wraps the form (the class-based Tailwind dark-mode convention) and is overridden the same way.
 
 ### Per-config class hooks
 
@@ -282,10 +286,10 @@ interface FormSettings {
   nextLabel?: string;            // default 'Next'
   backLabel?: string;            // default 'Back'
   submitLabel?: string;          // default 'Submit'
-  requiredMessage?: string;      // message when a required answer is missing
-  invalidMessage?: string;       // message when an answer is out of range / invalid
+  requiredMessage?: string;      // message when a required answer is missing, default 'Please complete the required fields in this section.'
+  invalidMessage?: string;       // message when an answer is out of range / invalid, default 'Please correct the highlighted answers in this section.'
   successTitle?: string;         // built-in success screen heading, default 'Thank you!'
-  successMessage?: string;       // built-in success screen body
+  successMessage?: string;       // built-in success screen body, default 'Your answers have been submitted.'
   submitErrorMessage?: string;   // shown when the POST fails or onFormComplete rejects (server messages win)
   honeypot?: boolean;            // render a hidden anti-spam field (see "Anti-spam honeypot")
 }
@@ -356,7 +360,7 @@ interface Question {
   // Number/scale
   min?: number;
   max?: number;
-  step?: number;       // for time-input: rounding interval in seconds (e.g. 900 = 15 min)
+  step?: number;       // number-input / range: native step; time-input: rounding interval in seconds (e.g. 900 = 15 min)
   minLabel?: string;   // label under the low end of a scale
   maxLabel?: string;   // label under the high end of a scale
   unit?: string;       // suffix shown inside number inputs (e.g. "kg", "min")
@@ -731,7 +735,7 @@ Each answer carries the question's **stable `uuid`** (falling back to `id`), the
 }
 ```
 
-Only currently visible answers are included (same rules as `onFormComplete`). `buildSubmitPayload(config, getResponse, translate?)` is exported if you want to build the payload yourself.
+Only currently visible answers are included (same rules as `onFormComplete`). `buildSubmitPayload(config, getResponse, translate?, honeypotValue?)` is exported if you want to build the payload yourself; the fourth argument fills `payload.honeypot` when `settings.honeypot` is on.
 
 ### After a successful POST
 
@@ -964,7 +968,9 @@ import { MultiStepForm, createFormState, evaluateCondition, validateStep, collec
 import type { FormConfig, Question, Condition } from 'formcomp';
 ```
 
-- **Components**: `MultiStepForm`, `FormStep`, `QuestionRenderer`, `GroupRenderer`, `SummaryStep`, all 13 input components (+ `FieldLabel`), all 4 layout components
+- **Core components**: `MultiStepForm`, `FormStep`, `QuestionRenderer`, `GroupRenderer`, `SummaryStep`
+- **Input components**: `RadioListGroup`, `RadioCardGroup`, `CheckboxGroup`, `SelectInput`, `LikertGroup`, `ScaleInput`, `TimeInput`, `DateInput`, `NumberInput`, `RangeInput`, `TextInput`, `TextArea`, `ConsentCheckbox`, `FieldLabel`
+- **Layout components**: `ProgressBar`, `NavigationButtons`, `StepContainer`, `QuestionGroupWrapper`
 - **State**: `createFormState`
 - **Utilities**: `evaluateCondition`, `isAnswered`, `validateStep`, `questionStatus`, `isStepVisible`, `collectResponses`, `validateConfig`, `isValidEmail`, `isValidUrl`, `buildSubmitPayload`, `formatAnswer`, `useTranslate`
 - **Constants**: `HONEYPOT_FIELD`
