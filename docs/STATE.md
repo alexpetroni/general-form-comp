@@ -1127,3 +1127,120 @@ R-23 (callback edges).
   tooltip text (the button sits inside the legend); `aria-describedby` from
   a control to its tooltip description would have to be combined with the
   alert id.
+
+## PHASE-7 — Release 0.4.0
+
+**Closed by PHASE-7:** R-21 (final consistency — the README reconciled with
+the code section by section, the Exports list diffed against
+`src/lib/index.ts`, the project map against the tree; the release cut).
+
+### What changed
+
+- **CHANGELOG**: `## Unreleased` became `## 0.4.0 — 2026-09-04` with the
+  sections in Keep-a-Changelog order (Added / Changed / Deprecated / Fixed;
+  the Unreleased block had Fixed first). Consolidated: the five per-phase
+  "Tests:" bullets are two (harness + test files); the "Callback transport"
+  Added bullet that only pointed at Fixed is gone; the two `FormStateController
+  gains hydrate?() / reset?()` bullets merged into the `hydrate()` / `reset()`
+  Added bullets; "Persisted state is applied after mount" and the separate
+  "SSR:" bullet are one Changed entry; the input-props bullet moved from
+  Changed to Added (purely additive); the three demo bullets are grouped; the
+  R-24 test rename moved from Fixed into the tests bullet (not user-visible
+  behaviour); "The version is unchanged" dropped from the package-metadata
+  entry. Every user-visible change in `git log 1611648..HEAD` (the PHASE-0
+  port commit onward — there is no `v0.3.0` tag) is present; checked commit
+  by commit against `--stat` of `src/`, `package.json`, `static/`, `tests/`.
+  New **Upgrading from 0.3.x** paragraph: the six items the phase names
+  (no clamping, awaited `onFormComplete`, persisted state after mount / SSR
+  renders step 1, storage cleared after success, `inline` deprecated,
+  `TranslateFn` without `params`) plus three that PHASE-4/5/6 asked to carry
+  into the release notes because they can break a consumer's tests or
+  handlers: per-instance DOM ids, `onSubmitError` receiving a `SubmitError`,
+  and `version` defaulting to `config.version` (including the one-time
+  discard of 0.3.x entries persisted without a stamp under a versioned
+  config).
+- **Version**: `package.json` and `package-lock.json` (root and
+  `packages[""]`) → `0.4.0`, edited directly with a two-line script (the
+  same two fields `npm version` would touch).
+- **README pass** (`5d3fd08`). Changed: the `/dev/two-forms` route under
+  Development (with a link to the DOM-ids section); the unit / browser test
+  coverage lists under Development; the built-in controller's read-only
+  `currentStepId`, `stepCount`, `allResponses` under State management; the
+  `.dark .formcomp` block under Theme variables; defaults for
+  `requiredMessage`, `invalidMessage` and `successMessage` in the
+  `FormSettings` block (from `MultiStepForm` / `QuestionGroupWrapper`);
+  `Question.step` comment (native step on number/range, rounding on time);
+  `buildSubmitPayload(config, getResponse, translate?, honeypotValue?)` — the
+  fourth argument was missing; the Exports list names every core, input and
+  layout component instead of "all 13 input components". Verified unchanged
+  against the code: Props table vs `MultiStepForm`'s `Props`; `FormSettings`
+  (15 keys, script-diffed against `types.ts`); `FormCallbacks`,
+  `FormStateAdapter` / `FormStateController` blocks vs `types.ts`; the
+  Validation section vs `validator.ts`, `NumberInput`, `RangeInput`,
+  `GroupRenderer`; Config sanity checks vs every `warnings.push` in
+  `config-check.ts` (structure, duplicates, options, consent options,
+  likert-batch membership and option sets, unknown step/question, valueless
+  operator, step self-reference, the typed comparison family); State
+  management vs `form-state.svelte.ts` (`FormStateOptions` defaults, `hydrate`,
+  `reset`, SSR note); Submitting results vs `submitForm` (precedence,
+  callback transport, `reset()` on every success path, `SubmitError`);
+  the operator table vs `evaluator.ts`; the QuestionType table vs
+  `QuestionRenderer` defaults (`scale` 1–10, `textarea` rows 4, `range`
+  From/To, `select` placeholder option); the examples table vs
+  `src/examples/index.ts` and each file's features; the project structure vs
+  `find src static tests -type f`; theme tokens vs `theme.css`.
+- **No code changes.** The reconciliation found no documentation claim that
+  the code contradicts, so nothing in `src/` was touched and no test was
+  added or changed in this phase.
+
+### Release 0.4.0 — review ids by phase
+
+- PHASE-0: R-25 (vendored 0.3.0 upstreamed), R-6 (email half), R-16.
+- PHASE-1: R-20, R-15 (`version` default only), R-17, R-18, R-19, R-21
+  (project map).
+- PHASE-2: R-1, R-7, R-13 (the `validateConfig` checks only).
+- PHASE-3: R-5, R-6 (url half), R-8 (ARIA state, marker, per-question
+  ring), R-22, R-24.
+- PHASE-4: R-3, R-4, R-26.
+- PHASE-5: R-2.
+- PHASE-6: R-8 (tooltip), R-9, R-10, R-11, R-23.
+- PHASE-7: R-21 (final consistency).
+- Deferred to `docs/phases/BACKLOG.md`: R-12 (submission transport
+  override), R-14 (cross-step hidden-answer clearing), R-15 second half
+  (storage-key default), R-13's discriminated `Question` union, and the
+  review's section F minors. The backlog also carries the PHASE-2/6
+  candidates (likert radio hit-target ergonomics, a `validateConfig` warning
+  for `renderMode: 'inline'`, tooltip text in a fieldset's name).
+
+### Verification run (2026-09-04, project root)
+
+- `npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+  --fail-on-warnings` → 271 files, **0 errors, 0 warnings**.
+- `npm run test:unit` → 9 files, **146 passed**.
+- `npx playwright install chromium` (already present) and
+  `CI=1 npm run test:e2e` → **46 passed** (27.0 s), fresh build served on
+  4322 and stopped by Playwright.
+- `npm run package` → succeeds (only the pre-existing `import.meta.env`
+  advisory). `dist/index.d.ts` exports the same **65** names as
+  `src/lib/index.ts` (script diff, both directions empty); no `dist/assets/`;
+  no `$lib` / `$app` / `$examples` import anywhere in `dist/`.
+- `npm pack --dry-run` → `formcomp-0.4.0.tgz`, **73 files**: 69 under
+  `dist/` plus `CHANGELOG.md`, `LICENSE`, `README.md`, `package.json`.
+- README Exports vs `src/lib/index.ts`: script found nothing missing and
+  nothing extra (the only other backticked words in the section are
+  `SubmitError`'s `status` / `data` fields, not claimed as exports).
+  `FormSettings` keys: 15 in `types.ts`, 15 in the README block.
+
+### Commits
+
+- `570a432` docs(changelog): release 0.4.0 — Unreleased becomes the dated
+  entry, sections consolidated, Upgrading from 0.3.x (R-21)
+- `91dc114` chore(release): bump version to 0.4.0
+- `5d3fd08` docs(readme): release pass (R-21)
+- docs(state): this section
+
+### Decisions
+
+- No git tag: the phase does not ask for one and the runner pushes after
+  review; `v0.4.0` can be tagged on the pushed commit.
+- Nothing deferred; nothing disagreed with. The backlog file is untouched.
