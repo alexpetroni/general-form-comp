@@ -123,7 +123,11 @@
 		submitError = null;
 		const fromIndex = formState.currentStepIndex;
 		formState.goToStep(absoluteIndex);
-		callbacks?.onStepChange?.(fromIndex, absoluteIndex);
+		const toIndex = formState.currentStepIndex;
+		// Only a real move is a step change: the controller may ignore an
+		// out-of-range index, and editing the current step from the summary
+		// lands on the index it already had.
+		if (toIndex !== fromIndex) callbacks?.onStepChange?.(fromIndex, toIndex);
 		focusStepStart();
 	}
 
@@ -154,9 +158,10 @@
 		}
 
 		warningGroupId = null;
+		// Once per validated step, whichever exit follows
+		callbacks?.onStepComplete?.(currentStep.id, formState.currentStepIndex);
 
 		if (isLastStep) {
-			callbacks?.onStepComplete?.(currentStep.id, formState.currentStepIndex);
 			if (settings.showSummary) {
 				showingSummary = true;
 				focusStepStart();
@@ -164,7 +169,6 @@
 				submitForm();
 			}
 		} else {
-			callbacks?.onStepComplete?.(currentStep.id, formState.currentStepIndex);
 			const next = visibleSteps[currentVisibleIndex + 1];
 			goTo(config.steps.indexOf(next));
 		}
