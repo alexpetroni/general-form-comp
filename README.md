@@ -161,8 +161,13 @@ const state = createFormState(config, {
                             // under another version is discarded
 });
 
-state.reset(); // every answer cleared, back to the first step, storage entry removed
+state.hydrate(); // apply the persisted entry — MultiStepForm does this once after mount
+state.reset();   // every answer cleared, back to the first step, storage entry removed
 ```
+
+Construction never touches storage: a new controller always starts with empty answers on the first step, on the server and in the browser alike. `hydrate()` reads the persisted entry — the `version` must match, the step index is clamped to the config, corrupt JSON is ignored — and applies it without scheduling a save. It is idempotent: the first call in a browser does the work; later calls, and every call on the server or with `persist: false`, are no-ops, so answers given in the meantime are never overwritten. `MultiStepForm` calls it once after mount.
+
+**SSR:** the server always renders the first step; persisted answers are restored right after hydration, so the first step paints and the persisted step then swaps in. To avoid the visible swap, render the form client-only (`{#if browser}` or `export const ssr = false` on the page).
 
 `reset()` puts the controller back to its initial state: one empty bucket per step, index 0, any pending debounced save cancelled, and the storage entry removed synchronously so nothing re-persists it. `MultiStepForm` calls it after a successful submission (see [After success](#after-success)); call it yourself for a "Start over" button.
 
@@ -180,9 +185,12 @@ interface FormStateController extends FormStateAdapter {
   nextStep(): void;
   prevStep(): void;
   goToStep(index: number): void;
-  reset?(): void; // optional — a controller without it is simply not cleared after success
+  hydrate?(): void; // optional — called once after mount; a controller without it is simply not hydrated
+  reset?(): void;   // optional — a controller without it is simply not cleared after success
 }
 ```
+
+A custom controller that restores state from storage — or from anywhere else the server cannot see — should do so in `hydrate()`, not while it is constructed, so that its first client render matches the server render.
 
 ---
 
@@ -861,7 +869,7 @@ src/lib/
   utils.ts                          # cn() — clsx + tailwind-merge
   theme.css                         # --form-* tokens (shipped as formcomp/theme.css)
   state/
-    form-state.svelte.ts            # reactive state with persistence, version check, clamping, reset()
+    form-state.svelte.ts            # reactive state with persistence, hydrate() after mount, version check, clamping, reset()
   conditions/
     evaluator.ts                    # condition evaluation engine
   validation/
@@ -921,7 +929,8 @@ tests/
     config-check.test.ts            # validateConfig
     submission.test.ts              # buildSubmitPayload, formatAnswer, SubmitError
     email-consent-honeypot.test.ts  # 0.3.0 features
-    form-state.test.ts              # createFormState: persistence, hydration, version, clamping, reset
+    form-state.test.ts              # createFormState: pure construction, hydrate(), persistence, version, clamping, reset
+    form-state-server.test.ts       # createFormState without a window (node): hydrate() is a no-op
     progress-label.test.ts          # settings.progressLabel through translate (SSR render)
   multi-step-form.spec.ts           # Playwright: skip/clear/validation/summary/submission flows
   lead-capture.spec.ts              # Playwright: email, consent, honeypot
@@ -929,6 +938,7 @@ tests/
   likert.spec.ts                    # Playwright: likert radiogroups and names, standalone likert
   validation-aria.spec.ts           # Playwright: email fix-up, required marker, per-question ring, ARIA state
   submission-lifecycle.spec.ts      # Playwright: state cleared after success, callback transport, SubmitError
+  ssr-hydration.spec.ts             # Playwright: reload mid-form — server renders step 1, persisted step swapped in after mount
 ```
 
 ## Exports

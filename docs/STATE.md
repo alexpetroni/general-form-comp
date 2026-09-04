@@ -757,3 +757,186 @@ success), R-4 (callback transport without `config.submit`), R-26
   are the awaited `onFormComplete` (may return a promise; a rejection aborts)
   and `onSubmitError` receiving a `SubmitError`.
 - Nothing deferred; nothing disagreed with.
+
+## PHASE-5 — SSR-safe hydration of persisted state
+
+**Closed by PHASE-5:** R-2 (reload mid-form hydrates the wrong step under
+SSR).
+
+### What changed
+
+- **Construction is pure (R-2)**, `src/lib/state/form-state.svelte.ts`:
+  `createFormState` no longer touches storage. The initial state is always
+  `emptyBuckets()` and index 0, on the server and in the browser alike; the
+  storage read moved into the new `hydrate()` — the only place `getItem`
+  appears in the module. `hydrate()` keeps the existing rules (version
+  match, index clamp against `config.steps.length`, corrupt JSON / storage
+  errors ignored), assigns `responses` (persisted buckets spread over fresh
+  empty ones) and `currentStepIndex` directly — no `scheduleSave` — and is
+  idempotent through a `hydrated` flag: the first call in a browser does the
+  work; later calls, and every call on the server (`typeof window ===
+  'undefined'`) or with `persist: false`, return before reading anything, so
+  answers given in the meantime are never overwritten. The return type of
+  `createFormState` carries a non-optional `hydrate(): void`;
+  `FormStateController` declares `hydrate?(): void` (optional, like
+  `reset?()`, so external controllers keep compiling — a controller without
+  it is simply not hydrated by the form).
+- **Hydrate after mount (R-2)**, `MultiStepForm.svelte`: a `$effect` — not
+  `$effect.pre` — calls `formState.hydrate?.()` and then
+  `snapBackToVisibleStep()` inside `untrack()`, so nothing read in there
+  becomes a dependency and the effect runs exactly once, after the DOM
+  exists. Effects do not run on the server. The former top-level snap-back
+  block became that function; it still moves the controller with
+  `goToStep()` directly (not `goTo()`), so `onStepChange` is not fired and
+  no focus moves on load. The three `svelte-ignore state_referenced_locally`
+  suppressions of the old block are gone with it (function bodies are not
+  init-time reads).
+- **Ordering with the hidden-answer clearing effect** (`GroupRenderer`):
+  whichever runs first, nothing is lost. Before hydration every answer is
+  `undefined`, so the clearing effect has nothing to write; after hydration
+  the restored state is self-consistent (it was persisted from a live state
+  whose clearing effects had already run), so hidden questions carry no
+  value either. `reset()` is unchanged: it still removes the entry
+  synchronously and schedules no save; a `hydrate()` after it finds no
+  entry.
+- **Docs**: README State management (`hydrate()` in the snippet, the pure
+  construction / idempotence paragraph, the **SSR** paragraph with the
+  `{#if browser}` / `export const ssr = false` advice, `hydrate?()` in the
+  `FormStateController` block plus the custom-controller note), project map
+  (`form-state.svelte.ts`, the two new test files). CHANGELOG Unreleased:
+  Fixed (R-2), Changed (state applied after mount; SSR behaviour; optional
+  `hydrate?()` on the controller), Added (`hydrate()`, tests).
+
+### Tests
+
+- Unit, `tests/unit/form-state.test.ts`, `describe('hydrate')` (9 cases):
+  construction with a seeded entry calls `Storage.prototype.getItem` zero
+  times and yields `FRESH` / index 0, `hydrate()` calls it once with the key
+  and restores responses + index; `hydrate()` schedules no save (`setItem`
+  never called after 1000 ms, the entry is byte-for-byte what was seeded);
+  idempotence — a second call after `setResponse` + `nextStep` reads nothing
+  and overwrites nothing, even after the entry itself changed; `localStorage`
+  variant; `persist: false` never reads (`getItem` not called); corrupt JSON
+  does not throw and leaves the empty state; index 7 clamps to 2, index -3
+  to 0; after `reset()` a fresh controller hydrates to the empty state. The
+  existing restoration cases (`version` ×5, `reset` ×2, `persist: false`
+  never reads or writes) now call `hydrate()` right after construction;
+  their assertions are unchanged (the commit message says so).
+- Unit, `tests/unit/form-state-server.test.ts` (node environment, no
+  jsdom): `typeof window === 'undefined'`; construction gives the empty
+  state; `hydrate()` does not throw and changes nothing; answers,
+  navigation and `reset()` work in memory.
+- Browser, `tests/ssr-hydration.spec.ts` (production preview, conditional
+  example): "Yes" + "Mountains" → Next → Trip Details → wait until the entry
+  holds `"currentStepIndex":1` → `page.reload({ waitUntil: 'commit' })`.
+  (a) the reload's raw response body contains "Travel Preferences" and not
+  "Trip Details"; (b) the hydrated DOM shows the "Trip Details" heading and
+  the days field, "Travel Preferences" hidden; (c) Back → "Yes" and
+  "Mountains" still checked; (d) no `pageerror`, no `console.error`. Plus
+  the discriminating assertion: an `addInitScript` MutationObserver keeps a
+  reference to the first `<h2>` the parser produces (the server-rendered
+  heading); after the swap that node must be **disconnected with its text
+  still "Travel Preferences"** — hydration kept it as-is and the effect
+  replaced the step. Against the unfixed component the same node stayed
+  connected with its text patched to "Trip Details" (Svelte resumes
+  hydration after an `{#each}` / `{#if}` mismatch, so the step heading is
+  hydrated over the server node and patched in place). Result on the
+  unfixed tree: 1 failed, on that assertion only — received `{ connected: true, text: 'Travel Preferences', textNow: 'Trip Details' }`; (a) and (b) passed on the unfixed tree too, which is why they alone would not have reproduced the finding.
+- Test-first sequence in `git log`: `aca79db` (unit, failing: 18 cases —
+  `hydrate` missing, `getItem` called once during construction) →
+  `eddde6a` (browser, failing on the unfixed component) →
+  `1f438e0` (`hydrate()`) → `a517dde` (effect after mount).
+
+### Dev-server probe (`docs/phases/reference/hydration-probe.mjs`)
+
+`npx vite dev --port 5199 --strictPort` in the background, then
+`node docs/phases/reference/hydration-probe.mjs http://localhost:5199`
+(2026-09-04, fixed tree):
+
+```
+SSR heading      : Travel Preferences
+Hydrated heading : Trip Details
+Console after reload:
+(nothing)
+```
+
+Note for the reviewer: the probe's three lines are the same before and
+after the fix — the review already recorded "no console warning" on the
+unfixed tree, because Svelte repairs `{#if}` / `{#each}` mismatches and
+patches text silently (only a missing hydration marker logs
+`hydration_mismatch`). The probe therefore proves "no warning + persisted
+step shown" as the phase asks, while the browser test's heading-identity
+assertion is what actually distinguishes a clean hydration from the old
+in-place patch.
+
+### Decisions
+
+- **The visible swap stays.** The server cannot know the persisted step, so
+  step 1 paints and the persisted step swaps in after mount; that is the
+  documented behaviour, with the client-only rendering advice for consumers
+  who want no swap. No focus is moved by the swap (only user navigation
+  calls `focusStepStart`).
+- **`hydrate()` on the server does not consume the first call** — it
+  returns before setting the flag, so a controller constructed and
+  "hydrated" in a server-only code path is not marked hydrated. Irrelevant
+  in practice (a controller instance never crosses from server to client)
+  but the cheaper invariant to document.
+- **Snap-back persists the corrected index** (via `goToStep`), as before.
+- **Not touched**: `$effect.pre` was not used (it runs before the first
+  client render and would reproduce the mismatch); `onMount` would work as
+  well but the phase names `$effect`.
+
+### Commits
+
+- `aca79db` test(state): hydrate() applies the persisted entry after a pure
+  construction — no storage read in the constructor, idempotent, no save
+  scheduled, version/clamp/corrupt-JSON rules, persist:false and server
+  no-ops (failing, R-2) — 18 cases failed on the unfixed module
+- `eddde6a` test(e2e): reload mid-form under SSR — server body renders step
+  1, hydrated DOM shows the persisted step, server heading replaced not
+  patched, answers intact, no errors (failing, R-2)
+- `1f438e0` feat(state): hydrate() on createFormState and
+  FormStateController — construction is pure, the persisted entry is
+  applied on the first call in a browser, no save scheduled (R-2)
+- `a517dde` fix(form): apply persisted state from an $effect after mount so
+  the first client render matches the server render; snap-back runs after
+  hydration without firing onStepChange (R-2)
+- (this commit) docs: README State management (hydrate(), SSR), project
+  map, CHANGELOG Unreleased, STATE.md PHASE-5 with the probe output
+
+### Verification run (2026-09-04, project root)
+
+- `npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+  --fail-on-warnings` → 265 files, **0 errors, 0 warnings**.
+- `npm run test:unit` → 8 files, **143 passed** (137 before: the five
+  `hydration` cases became nine `hydrate` cases, +2 in
+  `form-state-server.test.ts`).
+- `npx playwright install chromium` (the 177 MiB download hit one
+  `ECONNRESET` and was retried; the headless shell landed in
+  `~/.cache/ms-playwright/chromium_headless_shell-1228`) `&& CI=1 npm run
+  test:e2e` → **41 passed** (40 existing, untouched, + 1 in
+  `ssr-hydration.spec.ts`), fresh build on port 4322. The new spec was run
+  against the unfixed component first: 1 failed on the heading-identity
+  assertion (see Tests).
+- `npm run package` → succeeds (the pre-existing `import.meta.env` advisory
+  remains); `dist/types.d.ts` has `hydrate?(): void`,
+  `dist/state/form-state.svelte.d.ts` has `hydrate(): void`, `getItem`
+  occurs once in `dist/state/form-state.svelte.js` (inside `hydrate()`); no
+  `$lib` / `$app` / `$examples` import in `dist/`; `dist/` stays gitignored.
+- DoD grep: `grep -n getItem src/lib/state/form-state.svelte.ts` → one hit,
+  line 141, inside `hydrate()` (which starts at line 136).
+- Probe: see above; the dev server (bound to IPv6 `localhost` only, which
+  the probe's `http://localhost:5199` resolves fine) was stopped afterwards.
+
+### For the next phases
+
+- **PHASE-6 (R-23 and the API clean-up)**: the mount effect is the single
+  place hydration and snap-back happen; `goTo()` remains the only path that
+  fires `onStepChange`. `createFormState`'s public surface is now
+  `hydrate()` + `reset()` on top of the controller interface; both are
+  documented in the README `FormStateController` block.
+- **PHASE-7**: CHANGELOG Changed entries to carry into the release notes —
+  persisted state applied after mount (a consumer reading the controller
+  synchronously after construction sees the empty state until `hydrate()`),
+  and the optional `hydrate?()` on `FormStateController`.
+- Nothing deferred; nothing disagreed with.
