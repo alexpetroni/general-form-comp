@@ -1,6 +1,6 @@
 {
 	"name": "formcomp",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "Config-driven multi-step form component library for Svelte 5 and Tailwind CSS v4",
 	"license": "BSD-3-Clause",
 	"repository": {
