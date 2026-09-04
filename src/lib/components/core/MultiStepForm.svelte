@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { setContext, tick, type Snippet } from 'svelte';
+	import { setContext, tick, untrack, type Snippet } from 'svelte';
 	import type { FormConfig, FormStateController, TranslateFn, FormCallbacks, SubmitPayload } from '../../types.js';
 	import { FORM_STATE_KEY, TRANSLATE_KEY } from '../../types.js';
 	import { createFormState } from '../../state/form-state.svelte.js';
@@ -74,25 +74,34 @@
 
 	// A persisted step index can point at a step that current answers hide —
 	// snap back to the nearest earlier visible step (or the first one). Runs
-	// once at mount, before the first render — the initial-config reads below
-	// are that one-shot on purpose (L-1).
-	{
+	// right after hydration; it moves the controller directly (no `goTo`), so
+	// `onStepChange` is not fired.
+	function snapBackToVisibleStep() {
 		const idx = formState.currentStepIndex;
-		// svelte-ignore state_referenced_locally
 		const step = config.steps[idx];
-		if (step && !isStepVisible(step, getResponse)) {
-			// svelte-ignore state_referenced_locally
-			let target = config.steps.findIndex((s) => isStepVisible(s, getResponse));
-			for (let i = idx - 1; i >= 0; i--) {
-				// svelte-ignore state_referenced_locally
-				if (isStepVisible(config.steps[i], getResponse)) {
-					target = i;
-					break;
-				}
+		if (!step || isStepVisible(step, getResponse)) return;
+		let target = config.steps.findIndex((s) => isStepVisible(s, getResponse));
+		for (let i = idx - 1; i >= 0; i--) {
+			if (isStepVisible(config.steps[i], getResponse)) {
+				target = i;
+				break;
 			}
-			if (target >= 0) formState.goToStep(target);
 		}
+		if (target >= 0) formState.goToStep(target);
 	}
+
+	// Persisted answers are applied after mount, not during init: the server
+	// has no storage and renders the first step, so the first client render
+	// must be the same for hydration to be clean (R-2). `$effect` — not
+	// `$effect.pre`, which runs before the first client render and would
+	// reproduce the mismatch — and `untrack` keeps it a one-shot: nothing read
+	// in here becomes a dependency.
+	$effect(() => {
+		untrack(() => {
+			formState.hydrate?.();
+			snapBackToVisibleStep();
+		});
+	});
 
 	/** Scroll to the top of the form and move focus to the new step heading. */
 	async function focusStepStart() {
