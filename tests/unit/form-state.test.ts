@@ -5,7 +5,9 @@ import type { FormConfig } from '../../src/lib/types.js';
 
 /**
  * Unit tests for the built-in state controller: buckets, navigation bounds,
- * debounced persistence, hydration, version invalidation and index clamping.
+ * debounced persistence, `hydrate()`, version invalidation, index clamping
+ * and `reset()`. Construction never touches storage (R-2): the persisted
+ * entry is applied by `hydrate()`, which `MultiStepForm` calls after mount.
  * Runs under jsdom for `sessionStorage` / `localStorage`; timers are faked so
  * the debounced save can be advanced deterministically.
  */
@@ -193,6 +195,7 @@ describe('createFormState', () => {
 			const setItem = vi.spyOn(Storage.prototype, 'setItem');
 
 			const state = createFormState(makeConfig(), { storageKey: KEY, persist: false, debounceMs: 300 });
+			state.hydrate();
 
 			expect(state.allResponses).toEqual(FRESH);
 			expect(state.currentStepIndex).toBe(0);
@@ -208,16 +211,68 @@ describe('createFormState', () => {
 		});
 	});
 
-	describe('hydration', () => {
-		it('restores responses and the step index from sessionStorage', () => {
+	describe('hydrate', () => {
+		it('construction reads nothing: a seeded entry yields empty buckets and index 0 until hydrate()', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'saved' } }, currentStepIndex: 1 });
+			const getItem = vi.spyOn(Storage.prototype, 'getItem');
 
 			const state = createFormState(makeConfig(), { storageKey: KEY });
 
+			// Pure construction — the server and the first client render agree.
+			expect(getItem).not.toHaveBeenCalled();
+			expect(state.allResponses).toEqual(FRESH);
+			expect(state.currentStepIndex).toBe(0);
+			expect(state.currentStepId).toBe('one');
+
+			state.hydrate();
+
+			expect(getItem).toHaveBeenCalledTimes(1);
+			expect(getItem).toHaveBeenCalledWith(KEY);
 			expect(state.getResponse('one', 'q1')).toBe('saved');
 			expect(state.allResponses).toEqual({ one: { q1: 'saved' }, two: {}, three: {} });
 			expect(state.currentStepIndex).toBe(1);
 			expect(state.currentStepId).toBe('two');
+		});
+
+		it('schedules no save: the entry is left exactly as it was', () => {
+			seed(sessionStorage, { responses: { one: { q1: 'saved' } }, currentStepIndex: 1, version: 3 });
+			const setItem = vi.spyOn(Storage.prototype, 'setItem');
+			const state = createFormState(makeConfig(), { storageKey: KEY, debounceMs: 300, version: 3 });
+
+			state.hydrate();
+			vi.advanceTimersByTime(1000);
+
+			expect(setItem).not.toHaveBeenCalled();
+			expect(JSON.parse(sessionStorage.getItem(KEY)!)).toEqual({
+				responses: { one: { q1: 'saved' } },
+				currentStepIndex: 1,
+				version: 3
+			});
+		});
+
+		it('is idempotent: a second call reads nothing and does not overwrite answers given since', () => {
+			seed(sessionStorage, { responses: { one: { q1: 'saved' } }, currentStepIndex: 1 });
+			const getItem = vi.spyOn(Storage.prototype, 'getItem');
+			const state = createFormState(makeConfig(), { storageKey: KEY, debounceMs: 300 });
+
+			state.hydrate();
+			state.setResponse('one', 'q1', 'edited');
+			state.setResponse('two', 'q2', 9);
+			state.nextStep();
+			state.hydrate();
+
+			expect(getItem).toHaveBeenCalledTimes(1);
+			expect(state.getResponse('one', 'q1')).toBe('edited');
+			expect(state.getResponse('two', 'q2')).toBe(9);
+			expect(state.currentStepIndex).toBe(2);
+
+			// …even after the entry itself changed in the meantime
+			seed(sessionStorage, { responses: { one: { q1: 'from another tab' } }, currentStepIndex: 0 });
+			state.hydrate();
+
+			expect(getItem).toHaveBeenCalledTimes(1);
+			expect(state.getResponse('one', 'q1')).toBe('edited');
+			expect(state.currentStepIndex).toBe(2);
 		});
 
 		it('restores from localStorage when persist is "localStorage"', () => {
@@ -225,18 +280,32 @@ describe('createFormState', () => {
 			seed(localStorage, { responses: { two: { q2: 7 } }, currentStepIndex: 1 });
 
 			const state = createFormState(makeConfig(), { storageKey: KEY, persist: 'localStorage' });
+			expect(state.allResponses).toEqual(FRESH);
+
+			state.hydrate();
 
 			expect(state.allResponses).toEqual({ one: {}, two: { q2: 7 }, three: {} });
 			expect(state.currentStepIndex).toBe(1);
 		});
 
+		it('persist: false makes hydrate() a no-op that never reads storage', () => {
+			seed(sessionStorage, { responses: { one: { q1: 'session' } }, currentStepIndex: 2 });
+			seed(localStorage, { responses: { one: { q1: 'local' } }, currentStepIndex: 1 });
+			const getItem = vi.spyOn(Storage.prototype, 'getItem');
+
+			const state = createFormState(makeConfig(), { storageKey: KEY, persist: false });
+			state.hydrate();
+
+			expect(getItem).not.toHaveBeenCalled();
+			expect(state.allResponses).toEqual(FRESH);
+			expect(state.currentStepIndex).toBe(0);
+		});
+
 		it('ignores corrupt JSON in storage', () => {
 			sessionStorage.setItem(KEY, '{not json');
+			const state = createFormState(makeConfig(), { storageKey: KEY });
 
-			let state!: ReturnType<typeof createFormState>;
-			expect(() => {
-				state = createFormState(makeConfig(), { storageKey: KEY });
-			}).not.toThrow();
+			expect(() => state.hydrate()).not.toThrow();
 
 			expect(state.allResponses).toEqual(FRESH);
 			expect(state.currentStepIndex).toBe(0);
@@ -244,8 +313,9 @@ describe('createFormState', () => {
 
 		it('clamps a persisted index beyond the current step count to the last step', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'x' } }, currentStepIndex: 7 });
-
 			const state = createFormState(makeConfig(), { storageKey: KEY });
+
+			state.hydrate();
 
 			expect(state.currentStepIndex).toBe(2);
 			expect(state.currentStepId).toBe('three');
@@ -254,19 +324,35 @@ describe('createFormState', () => {
 
 		it('clamps a negative persisted index to the first step', () => {
 			seed(sessionStorage, { responses: {}, currentStepIndex: -3 });
-
 			const state = createFormState(makeConfig(), { storageKey: KEY });
+
+			state.hydrate();
 
 			expect(state.currentStepIndex).toBe(0);
 			expect(state.currentStepId).toBe('one');
 		});
+
+		it('finds nothing to restore after reset() removed the entry', () => {
+			seed(sessionStorage, { responses: { one: { q1: 'saved' } }, currentStepIndex: 1 });
+			const state = createFormState(makeConfig(), { storageKey: KEY });
+			state.hydrate();
+			expect(state.currentStepIndex).toBe(1);
+
+			state.reset();
+			const fresh = createFormState(makeConfig(), { storageKey: KEY });
+			fresh.hydrate();
+
+			expect(fresh.allResponses).toEqual(FRESH);
+			expect(fresh.currentStepIndex).toBe(0);
+		});
 	});
 
 	describe('version', () => {
-		it('ignores an entry stored under a different version', () => {
+		it('ignores an entry stored under a different version on hydrate()', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'old' } }, currentStepIndex: 2, version: 1 });
 
 			const state = createFormState(makeConfig(), { storageKey: KEY, version: 2 });
+			state.hydrate();
 
 			expect(state.allResponses).toEqual(FRESH);
 			expect(state.currentStepIndex).toBe(0);
@@ -276,6 +362,7 @@ describe('createFormState', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'same' } }, currentStepIndex: 2, version: 2 });
 
 			const state = createFormState(makeConfig(), { storageKey: KEY, version: 2 });
+			state.hydrate();
 
 			expect(state.getResponse('one', 'q1')).toBe('same');
 			expect(state.currentStepIndex).toBe(2);
@@ -284,11 +371,13 @@ describe('createFormState', () => {
 		it('accepts any stored entry when neither the option nor the config has a version', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'stamped' } }, currentStepIndex: 1, version: 'anything' });
 			const stamped = createFormState(makeConfig(), { storageKey: KEY });
+			stamped.hydrate();
 			expect(stamped.getResponse('one', 'q1')).toBe('stamped');
 			expect(stamped.currentStepIndex).toBe(1);
 
 			seed(sessionStorage, { responses: { one: { q1: 'unstamped' } }, currentStepIndex: 2 });
 			const unstamped = createFormState(makeConfig(), { storageKey: KEY });
+			unstamped.hydrate();
 			expect(unstamped.getResponse('one', 'q1')).toBe('unstamped');
 			expect(unstamped.currentStepIndex).toBe(2);
 		});
@@ -297,6 +386,7 @@ describe('createFormState', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'stale' } }, currentStepIndex: 2, version: 1 });
 
 			const state = createFormState(makeConfig(2), { storageKey: KEY, debounceMs: 300 });
+			state.hydrate();
 
 			// Saved under version 1, config is now version 2 → the entry is discarded…
 			expect(state.allResponses).toEqual(FRESH);
@@ -312,6 +402,7 @@ describe('createFormState', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'nine' } }, currentStepIndex: 1, version: 9 });
 
 			const state = createFormState(makeConfig(2), { storageKey: KEY, version: 9, debounceMs: 300 });
+			state.hydrate();
 
 			expect(state.getResponse('one', 'q1')).toBe('nine');
 			state.setResponse('one', 'q1', 'still nine');
@@ -324,6 +415,7 @@ describe('createFormState', () => {
 		it('empties the responses to one bucket per step, returns to index 0 and removes the entry synchronously', () => {
 			seed(sessionStorage, { responses: { one: { q1: 'saved' }, ghost: { x: 1 } }, currentStepIndex: 2 });
 			const state = createFormState(makeConfig(), { storageKey: KEY, debounceMs: 300 });
+			state.hydrate();
 			expect(state.getResponse('one', 'q1')).toBe('saved');
 			expect(state.currentStepIndex).toBe(2);
 
@@ -360,6 +452,7 @@ describe('createFormState', () => {
 			seed(localStorage, { responses: { one: { q1: 'local' } }, currentStepIndex: 1 });
 			seed(sessionStorage, { responses: { one: { q1: 'session' } }, currentStepIndex: 1 });
 			const state = createFormState(makeConfig(), { storageKey: KEY, persist: 'localStorage' });
+			state.hydrate();
 			expect(state.getResponse('one', 'q1')).toBe('local');
 
 			state.reset();
