@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import {
-		FORM_STATE_KEY, STEP_ID_KEY,
+		FORM_STATE_KEY, STEP_ID_KEY, FORM_ID_KEY,
 		type FormStateAdapter, type QuestionGroup
 	} from '../../types.js';
+	import { scopedId, groupAlertId } from '../../utils.js';
 	import { evaluateCondition } from '../../conditions/evaluator.js';
 	import { questionStatus } from '../../validation/validator.js';
 	import QuestionGroupWrapper from '../layout/QuestionGroupWrapper.svelte';
@@ -20,12 +21,15 @@
 
 	const state = getContext<FormStateAdapter>(FORM_STATE_KEY);
 	const stepId = getContext<string>(STEP_ID_KEY);
+	const formId = getContext<string | undefined>(FORM_ID_KEY);
 
 	const isWarning = $derived(warningGroupId === group.id);
 
-	// Id of the alert rendered by QuestionGroupWrapper while the group is in
-	// warning; failing controls reference it with aria-describedby.
-	const alertId = $derived(`formcomp-group-${group.id}-alert`);
+	// The wrapper's id base is prefixed per form instance (see FORM_ID_KEY);
+	// the alert rendered by QuestionGroupWrapper while the group is in warning
+	// derives from it, and failing controls reference it with aria-describedby.
+	const wrapperId = $derived(scopedId(formId, group.id));
+	const alertId = $derived(groupAlertId(wrapperId));
 
 	// Filter visible questions based on conditions
 	const visibleQuestions = $derived(
@@ -84,7 +88,7 @@
 </script>
 
 {#if groupVisible && visibleQuestions.length > 0}
-	<QuestionGroupWrapper id={group.id} label={group.label} intro={group.intro} warning={isWarning} {warningMessage} class={group.class}>
+	<QuestionGroupWrapper id={wrapperId} label={group.label} intro={group.intro} warning={isWarning} {warningMessage} class={group.class}>
 		{#if group.renderMode === 'likert-batch'}
 			<!-- All questions rendered as a single LikertGroup -->
 			<LikertGroup questions={visibleQuestions} warningIds={failingIds} describedBy={isWarning ? alertId : undefined} />

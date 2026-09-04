@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import {
-		FORM_STATE_KEY, STEP_ID_KEY,
+		FORM_STATE_KEY, STEP_ID_KEY, FORM_ID_KEY,
 		type FormStateAdapter, type Question
 	} from '../../types.js';
+	import { scopedId } from '../../utils.js';
 	import RadioListGroup from '../inputs/RadioListGroup.svelte';
 	import RadioCardGroup from '../inputs/RadioCardGroup.svelte';
 	import CheckboxGroup from '../inputs/CheckboxGroup.svelte';
@@ -30,6 +31,12 @@
 
 	const state = getContext<FormStateAdapter>(FORM_STATE_KEY);
 	const stepId = getContext<string>(STEP_ID_KEY);
+	const formId = getContext<string | undefined>(FORM_ID_KEY);
+
+	// DOM id / name base of the input: prefixed with the form instance's id so
+	// several forms on one page do not collide; the raw question id when
+	// rendered outside a MultiStepForm.
+	const name = $derived(scopedId(formId, question.id));
 
 	// Reactive accessor bridging FormStateAdapter ↔ component props
 	function getValue(): unknown {
@@ -47,7 +54,7 @@
 			options={question.options ?? []}
 			value={getValue() as string | undefined}
 			onchange={(v) => setValue(v)}
-			name={question.id}
+			{name}
 			label={question.label}
 			tooltip={question.tooltip}
 			{warning}
@@ -62,7 +69,7 @@
 			options={question.options ?? []}
 			value={getValue() as string | undefined}
 			onchange={(v) => setValue(v)}
-			name={question.id}
+			{name}
 			label={question.label}
 			tooltip={question.tooltip}
 			{warning}
@@ -77,7 +84,7 @@
 		options={question.options ?? []}
 		value={getValue() as string[] ?? []}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		{warning}
@@ -91,7 +98,7 @@
 		options={question.options ?? []}
 		value={getValue() as string | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		placeholder={question.placeholder}
@@ -110,7 +117,7 @@
 		max={question.max ?? 10}
 		value={getValue() as number | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		minLabel={question.minLabel}
@@ -125,7 +132,7 @@
 	<TimeInput
 		value={getValue() as string | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		step={question.step}
@@ -139,7 +146,7 @@
 	<DateInput
 		value={getValue() as string | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		{warning}
@@ -151,7 +158,7 @@
 	<NumberInput
 		value={getValue() as number | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		min={question.min}
@@ -168,7 +175,7 @@
 	<RangeInput
 		value={getValue() as RangeValue | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		min={question.min}
@@ -186,7 +193,7 @@
 	<TextInput
 		value={getValue() as string | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		type={question.inputType ?? 'text'}
@@ -200,7 +207,7 @@
 	<ConsentCheckbox
 		value={getValue() as boolean | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		{warning}
@@ -212,7 +219,7 @@
 	<TextArea
 		value={getValue() as string | undefined}
 		onchange={(v) => setValue(v)}
-		name={question.id}
+		{name}
 		label={question.label}
 		tooltip={question.tooltip}
 		placeholder={question.placeholder}

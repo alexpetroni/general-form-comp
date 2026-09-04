@@ -292,3 +292,10 @@ export interface FormCallbacks {
 export const FORM_STATE_KEY = Symbol('form-state');
 export const TRANSLATE_KEY = Symbol('form-translate');
 export const STEP_ID_KEY = Symbol('form-step-id');
+/**
+ * Per-instance id prefix of the enclosing `MultiStepForm` (its `$props.id()`),
+ * a string. Every DOM id and radio `name` inside the form is
+ * `<formId>-<question or group id>`, so two forms on one page do not collide.
+ * Absent outside a form: components fall back to the raw id.
+ */
+export const FORM_ID_KEY = Symbol('form-id');

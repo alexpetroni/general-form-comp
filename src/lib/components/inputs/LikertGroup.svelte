@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import {
-		FORM_STATE_KEY, STEP_ID_KEY,
+		FORM_STATE_KEY, STEP_ID_KEY, FORM_ID_KEY,
 		type FormStateAdapter, type Question
 	} from '../../types.js';
-	import { cn } from '../../utils.js';
+	import { cn, scopedId } from '../../utils.js';
 	import { warningRing, optionFocus } from '../../styles.js';
 	import { useTranslate } from '../../i18n.js';
 
@@ -23,13 +23,16 @@
 
 	const state = getContext<FormStateAdapter>(FORM_STATE_KEY);
 	const stepId = getContext<string>(STEP_ID_KEY);
+	const formId = getContext<string | undefined>(FORM_ID_KEY);
 
 	const translate = useTranslate();
 
 	const scaleOptions = $derived(questions[0]?.options ?? []);
 
+	/** Radio `name` of a row (and id base): prefixed per form instance, raw outside a form. */
+	const rowName = (question: Question) => scopedId(formId, question.id);
 	/** DOM id of a statement cell; the row's radiogroup is labelled by it. */
-	const statementId = (question: Question) => `formcomp-likert-${question.id}-statement`;
+	const statementId = (question: Question) => `formcomp-likert-${rowName(question)}-statement`;
 
 	function getQuestionValue(questionId: string): string | undefined {
 		return state.getResponse(stepId, questionId) as string | undefined;
@@ -101,7 +104,7 @@
 					>
 						<input
 							type="radio"
-							name={question.id}
+							name={rowName(question)}
 							value={option.value}
 							checked={selected}
 							onchange={() => setQuestionValue(question.id, option.value)}

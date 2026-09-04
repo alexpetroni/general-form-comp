@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { setContext, tick, untrack, type Snippet } from 'svelte';
 	import type { FormConfig, FormStateController, TranslateFn, FormCallbacks, SubmitPayload } from '../../types.js';
-	import { FORM_STATE_KEY, TRANSLATE_KEY } from '../../types.js';
+	import { FORM_STATE_KEY, TRANSLATE_KEY, FORM_ID_KEY } from '../../types.js';
 	import { createFormState } from '../../state/form-state.svelte.js';
 	import { validateStep, collectResponses, isStepVisible } from '../../validation/validator.js';
 	import { validateConfig } from '../../validation/config-check.js';
 	import { buildSubmitPayload, HONEYPOT_FIELD, SubmitError } from '../../submission.js';
-	import { cn } from '../../utils.js';
+	import { cn, scopedId, groupElementId } from '../../utils.js';
 	import ProgressBar from '../layout/ProgressBar.svelte';
 	import NavigationButtons from '../layout/NavigationButtons.svelte';
 	import FormStep from './FormStep.svelte';
@@ -45,6 +45,11 @@
 	let honeypotValue = $state('');
 
 	setContext(FORM_STATE_KEY, formState);
+	// Per-instance prefix for every DOM id and radio name inside this form, so
+	// two forms on one page (or a host element with the same id) do not
+	// collide. Stable across SSR and hydration.
+	const formId = $props.id();
+	setContext(FORM_ID_KEY, formId);
 	// Context is init-only in Svelte — a runtime translate swap is not part of
 	// the API (re-create with {#key}), so the initial capture is deliberate.
 	// svelte-ignore state_referenced_locally
@@ -139,7 +144,10 @@
 					? (settings.invalidMessage ?? 'Please correct the highlighted answers in this section.')
 					: settings.requiredMessage;
 			if (warningGroupId) {
-				const el = document.getElementById(`formcomp-group-${warningGroupId}`);
+				// Scoped to this instance's root: ids are per form, never global
+				const el = rootEl?.querySelector<HTMLElement>(
+					`#${CSS.escape(groupElementId(scopedId(formId, warningGroupId)))}`
+				);
 				el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 			}
 			return;

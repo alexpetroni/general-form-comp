@@ -67,4 +67,4 @@ export type {
 	FormCallbacks
 } from './types.js';
 
-export { FORM_STATE_KEY, TRANSLATE_KEY, STEP_ID_KEY } from './types.js';
+export { FORM_STATE_KEY, TRANSLATE_KEY, STEP_ID_KEY, FORM_ID_KEY } from './types.js';
