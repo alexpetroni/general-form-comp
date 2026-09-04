@@ -319,7 +319,7 @@ interface QuestionGroup {
   intro?: string;    // optional paragraph below the heading
   questions: Question[];
   condition?: Condition;   // hide the entire group unless condition is met
-  renderMode?: 'individual' | 'likert-batch' | 'inline';
+  renderMode?: 'individual' | 'likert-batch' | InlineRenderMode; // InlineRenderMode = 'inline', deprecated
   layout?: LayoutHint;
   class?: string;          // extra Tailwind classes on the group wrapper
 }
@@ -331,7 +331,7 @@ interface QuestionGroup {
 |------|----------|
 | `'individual'` | (default) Each question renders in its own space with individual warning states. A `likert` question here renders as a one-row scale with its own header. |
 | `'likert-batch'` | All questions are passed to a single `LikertGroup` component as a batch table. All questions must share the same `options` array. |
-| `'inline'` | All questions render sequentially inside a single wrapper, with the same per-question warning state as `'individual'`. Useful with `layout.columns` for side-by-side fields. |
+| `'inline'` | **Deprecated** — an alias of `'individual'`; the two always rendered the same markup, and the type `InlineRenderMode` carries the `@deprecated` tag. Use `layout.columns` for side-by-side fields. |
 
 ### Question
 
@@ -409,13 +409,12 @@ interface LayoutHint {
 }
 ```
 
-Applied on a **group** with `renderMode: 'inline'`, this places all the group's questions into a multi-column grid:
+Applied on a **group**, this places all the group's questions into a multi-column grid (no `renderMode` needed — the former `renderMode: 'inline'` is a deprecated alias of the default):
 
 ```ts
 {
   id: 'body-metrics',
   label: 'Body Metrics',
-  renderMode: 'inline',
   layout: { columns: 2 },
   questions: [
     { id: 'height', type: 'number-input', label: 'Height', unit: 'cm' },
@@ -528,7 +527,6 @@ const config: FormConfig = {
         {
           id: 'schedule',
           label: 'Daily Schedule',
-          renderMode: 'inline',
           layout: { columns: 2 },
           questions: [
             { id: 'wake', type: 'time-input', label: 'Wake time', required: true, step: 900 },
@@ -617,7 +615,6 @@ const config: FormConfig = {
         {
           id: 'demographics',
           label: 'About You',
-          renderMode: 'inline',
           layout: { columns: 2 },
           questions: [
             { id: 'age', type: 'number-input', label: 'Age', required: true, min: 13, max: 120 },
@@ -955,5 +952,5 @@ import type { FormConfig, Question, Condition } from 'formcomp';
 - **Utilities**: `evaluateCondition`, `isAnswered`, `validateStep`, `questionStatus`, `isStepVisible`, `collectResponses`, `validateConfig`, `isValidEmail`, `isValidUrl`, `buildSubmitPayload`, `formatAnswer`, `useTranslate`
 - **Constants**: `HONEYPOT_FIELD`
 - **Errors**: `SubmitError` (`status`, `data`)
-- **Types**: `FormConfig`, `FormSettings`, `SubmitConfig`, `SubmitAnswer`, `SubmitPayload`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `RangeValue`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `TranslateFn`, `FormStateAdapter`, `FormStateController`, `FormStateOptions`, `FormCallbacks`
+- **Types**: `FormConfig`, `FormSettings`, `SubmitConfig`, `SubmitAnswer`, `SubmitPayload`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `RangeValue`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `InlineRenderMode` (deprecated), `TranslateFn`, `FormStateAdapter`, `FormStateController`, `FormStateOptions`, `FormCallbacks`
 - **Context keys**: `FORM_STATE_KEY`, `TRANSLATE_KEY`, `STEP_ID_KEY`

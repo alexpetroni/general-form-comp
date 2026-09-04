@@ -149,7 +149,6 @@ export const allInputsConfig: FormConfig = {
 				{
 					id: 'metrics',
 					label: 'Body metrics',
-					renderMode: 'inline',
 					layout: { columns: 2 },
 					questions: [
 						{
@@ -209,7 +208,6 @@ export const allInputsConfig: FormConfig = {
 				{
 					id: 'times',
 					label: 'Time & date',
-					renderMode: 'inline',
 					layout: { columns: 2 },
 					questions: [
 						{

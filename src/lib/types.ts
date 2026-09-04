@@ -97,13 +97,25 @@ export interface Question {
 
 // ── Group & Step Config ──
 
+/**
+ * @deprecated `'inline'` is an alias of `'individual'` — both render each
+ * question on its own; use `layout.columns` for side-by-side fields.
+ */
+export type InlineRenderMode = 'inline';
+
 export interface QuestionGroup {
 	id: string;
 	label: string;
 	intro?: string;
 	questions: Question[];
 	condition?: Condition;
-	renderMode?: 'individual' | 'likert-batch' | 'inline';
+	/**
+	 * How the questions are rendered. `'individual'` (default): each question
+	 * on its own, in a `layout.columns` grid when set; `'likert-batch'`: every
+	 * question as one row of a single likert table. `'inline'` is deprecated:
+	 * an alias of `'individual'` (see `InlineRenderMode`).
+	 */
+	renderMode?: 'individual' | 'likert-batch' | InlineRenderMode;
 	layout?: LayoutHint;
 	/** Extra classes merged onto the group wrapper */
 	class?: string;

@@ -54,6 +54,7 @@ export type {
 	RangeValue,
 	LayoutHint,
 	Question,
+	InlineRenderMode,
 	QuestionGroup,
 	StepConfig,
 	FormConfig,

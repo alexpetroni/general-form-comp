@@ -92,16 +92,10 @@
 		{#if group.renderMode === 'likert-batch'}
 			<!-- All questions rendered as a single LikertGroup -->
 			<LikertGroup questions={visibleQuestions} warningIds={failingIds} describedBy={isWarning ? alertId : undefined} />
-		{:else if group.renderMode === 'inline'}
-			<!-- All questions rendered sequentially in one wrapper -->
-			<div class={gridColsClass || 'space-y-6'}>
-				{#each visibleQuestions as question (question.id)}
-					{@const failing = failingIds.includes(question.id)}
-					<QuestionRenderer {question} warning={failing} describedBy={failing ? alertId : undefined} />
-				{/each}
-			</div>
 		{:else}
-			<!-- individual (default): each question gets its own space -->
+			<!-- individual (default): each question gets its own space, in a
+			     layout.columns grid when set. 'inline' is a deprecated alias
+			     of this branch — it never rendered anything different. -->
 			<div class={gridColsClass || 'space-y-6'}>
 				{#each visibleQuestions as question (question.id)}
 					{@const failing = failingIds.includes(question.id)}

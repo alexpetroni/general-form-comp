@@ -11,8 +11,8 @@ import { test, expect, type Page } from '@playwright/test';
  * - radio-based inputs expose required/invalid state on their radiogroup
  *   (ARIA 1.2 has no aria-required / aria-invalid on the radio role), likert
  *   batches per row;
- * - an inline group (renderMode: 'inline') gets the same per-question state
- *   as an individual one;
+ * - a two-column group (layout.columns, formerly renderMode: 'inline' — now a
+ *   deprecated alias of 'individual') gets the same per-question state;
  * - likert rows show the visible required marker in their statement cell.
  */
 
@@ -178,10 +178,11 @@ test('likert batch: every row is required and only the unanswered row is marked 
 	}
 });
 
-test('sleep-assessment (home): failing questions of an inline group carry aria-invalid and point at the alert', async ({ page }) => {
-	// The first group of the home page form ("Sleep Schedule") is renderMode: 'inline'
-	// with two required time inputs; its questions must get the same per-question
-	// state as an individual group.
+test('sleep-assessment (home): failing questions of a two-column group carry aria-invalid and point at the alert', async ({ page }) => {
+	// The first group of the home page form ("Sleep Schedule") is a two-column
+	// layout.columns group (it used renderMode: 'inline', now a deprecated alias
+	// of 'individual') with two required time inputs; its questions must get
+	// the same per-question state as any individual group.
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
