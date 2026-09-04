@@ -108,7 +108,7 @@ Drop a new `.ts` file into `./src/examples/`, add it to `src/examples/index.ts`,
 | Prop | Type | Description |
 |------|------|-------------|
 | `config` | `FormConfig` | The form configuration object (required). Captured once at mount — to swap configs at runtime, re-create the component with `{#key}`. |
-| `translate` | `TranslateFn` | Optional `(key, params?) => string` for i18n. When provided, all `label` fields are treated as translation keys. When omitted, labels render as-is. |
+| `translate` | `TranslateFn` | Optional `(key: string) => string` for i18n. When provided, all `label` fields are treated as translation keys. When omitted, labels render as-is. |
 | `state` | `FormStateController` | Optional external state controller (`FormStateAdapter` + step navigation). If omitted, an internal one is created with sessionStorage persistence. |
 | `callbacks` | `FormCallbacks` | Optional lifecycle callbacks. |
 | `success` | `Snippet<[SubmitPayload, unknown]>` | Optional custom success screen rendered after a successful submission — a 2xx POST or, without `config.submit`, a resolved `onFormComplete` (see "Submitting results"). |
@@ -131,6 +131,8 @@ Pass a `translate` function and *every* string in the config — question and op
 ```
 
 Without `translate`, all strings render as-is — plain-English configs need no setup. The built-in defaults ('Next', 'Back', 'Submit', 'Progress', validation and success messages) are also passed through `translate`, so provide keys via `settings` or translations for the default English strings.
+
+`TranslateFn` is `(key: string) => string`: the form always calls it with the key alone. A function that also takes an optional second parameter (a `params` object, as some i18n libraries provide) is still assignable — it just never receives one.
 
 ### Callbacks
 

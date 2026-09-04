@@ -240,7 +240,12 @@ export interface SubmitPayload {
 
 // ── Translation ──
 
-export type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
+/**
+ * Translate a config string (a label, option, tooltip, intro, settings text
+ * or one of the built-in defaults). Called with the key only; a function with
+ * an extra optional parameter is still assignable.
+ */
+export type TranslateFn = (key: string) => string;
 
 // ── State Adapter ──
 
