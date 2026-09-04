@@ -364,7 +364,7 @@ interface Question {
   placeholder?: string;
   rows?: number;       // for textarea
   inputType?: 'text' | 'email' | 'url';  // for text-input
-  tooltip?: string;    // help text shown as an info icon next to the label
+  tooltip?: string;    // help text behind an info button after the label (keyboard-reachable, toggles a description)
   // Styling
   class?: string;       // extra Tailwind classes on the question root
   optionClass?: string; // extra Tailwind classes on each option (select-type questions)
@@ -836,9 +836,17 @@ Every required question shows a red asterisk after its label. The marker is `ari
 
 - `aria-required="true"` on the controls of a required question: the input, select or textarea; each checkbox of a `multi-select` and the `consent` box; for radio-based inputs (`single-select`, `scale`, `likert`) on the `radiogroup` — the fieldset, or the likert row — because the `radio` role supports neither `aria-required` nor `aria-invalid`.
 - `aria-invalid="true"` on the same elements while the question is in warning.
-- `aria-describedby` on those elements pointing at the group's `<p role="alert">` (id `formcomp-group-<group id>-alert`), so the message is announced together with the field.
+- `aria-describedby` on those elements pointing at the group's `<p role="alert">` (id `formcomp-group-<formId>-<group id>-alert`, see [DOM ids](#dom-ids-and-several-forms-on-a-page)), so the message is announced together with the field.
 
 For standalone use the input components take the same as props: `required` and `describedBy` next to `warning`; `LikertGroup` also takes `warningIds` (ids of the rows to mark) so a batch flags failing rows only.
+
+### Tooltips
+
+`question.tooltip` renders an info button after the label (after the required marker), named by the tooltip text and with `title` for hover. It is in the tab order: Enter or Space toggles a description paragraph below the label (`aria-expanded`, `aria-controls`), Escape closes it. Next to a `<label>` the button sits outside the label, so the control's accessible name stays the label text and activating the button never focuses or toggles the control; inside a `<legend>` it follows the marker. Standalone inputs take the same `tooltip` prop (rendered by `FieldLabel`).
+
+### DOM ids and several forms on a page
+
+`MultiStepForm` creates a per-instance id with `$props.id()` (stable across SSR and hydration) and provides it through the `FORM_ID_KEY` context. Every id inside the form, and every radio `name`, is prefixed with it: inputs are `<formId>-<question id>`, option ids `<formId>-<question id>-<option value>`, likert statement cells `formcomp-likert-<formId>-<question id>-statement`, group wrappers `formcomp-group-<formId>-<group id>` and their alerts `formcomp-group-<formId>-<group id>-alert`. Two forms on one page, or a host element with the same id as a question, do not collide — the dev route `/dev/two-forms` renders two instances of the minimal example. Do not hard-code these ids in tests or CSS: select by role and label, or read the prefix with `getContext(FORM_ID_KEY)`. Input components used standalone (no form context) keep their raw `name` as the id.
 
 ### Hidden answers
 
@@ -865,7 +873,7 @@ src/lib/
   format.ts                         # formatAnswer(): human-readable answer values
   submission.ts                     # buildSubmitPayload(), HONEYPOT_FIELD, SubmitError
   styles.ts                         # shared Tailwind class strings for the inputs
-  utils.ts                          # cn() — clsx + tailwind-merge
+  utils.ts                          # cn() — clsx + tailwind-merge; scopedId() and the group id helpers
   theme.css                         # --form-* tokens (shipped as formcomp/theme.css)
   state/
     form-state.svelte.ts            # reactive state with persistence, hydrate() after mount, version check, clamping, reset()
@@ -878,11 +886,11 @@ src/lib/
     core/
       MultiStepForm.svelte          # top-level orchestrator
       FormStep.svelte               # renders one step from config
-      GroupRenderer.svelte          # renders a group (handles renderMode, conditions, layout)
+      GroupRenderer.svelte          # renders a group (renderMode, conditions, layout, per-instance ids)
       QuestionRenderer.svelte       # maps question type to input component
       SummaryStep.svelte            # read-only recap of all answers with edit links
     inputs/
-      FieldLabel.svelte             # label / legend with required marker and optional tooltip, shared by inputs
+      FieldLabel.svelte             # label / legend with required marker and keyboard-operable tooltip button, shared by inputs
       RadioListGroup.svelte         # single-select vertical list
       RadioCardGroup.svelte         # single-select card grid
       CheckboxGroup.svelte          # multi-select with exclusive option logic
@@ -918,6 +926,9 @@ src/routes/
     +page.svelte                    # example gallery
     [slug]/
       +page.svelte                  # renders one example by slug (async onFormComplete; ?fail=once rejects the first call)
+  dev/
+    two-forms/
+      +page.svelte                  # two MultiStepForm instances on one page (per-instance id test bed; not linked from the gallery)
 static/
   favicon.svg                       # demo favicon (not part of the package)
   robots.txt
@@ -931,6 +942,7 @@ tests/
     form-state.test.ts              # createFormState: pure construction, hydrate(), persistence, version, clamping, reset
     form-state-server.test.ts       # createFormState without a window (node): hydrate() is a no-op
     progress-label.test.ts          # settings.progressLabel through translate (SSR render)
+    translate-fn.test.ts            # TranslateFn is (key) => string: type-level check, one argument per call, legacy two-arg fn fits
   multi-step-form.spec.ts           # Playwright: skip/clear/validation/summary/submission flows
   lead-capture.spec.ts              # Playwright: email, consent, honeypot
   demo-pages.spec.ts                # Playwright: favicon, home page, sleep-assessment route
@@ -938,6 +950,9 @@ tests/
   validation-aria.spec.ts           # Playwright: email fix-up, required marker, per-question ring, ARIA state
   submission-lifecycle.spec.ts      # Playwright: state cleared after success, callback transport, SubmitError
   ssr-hydration.spec.ts             # Playwright: reload mid-form — server renders step 1, persisted step swapped in after mount
+  tooltip.spec.ts                   # Playwright: tooltip button — focusable, Enter/Escape toggle the description, input untouched
+  two-forms.spec.ts                 # Playwright: two forms on one page — per-instance ids, labels, validation
+  callbacks.spec.ts                 # Playwright: onStepChange only on a real index change, onStepComplete once
 ```
 
 ## Exports
@@ -955,4 +970,4 @@ import type { FormConfig, Question, Condition } from 'formcomp';
 - **Constants**: `HONEYPOT_FIELD`
 - **Errors**: `SubmitError` (`status`, `data`)
 - **Types**: `FormConfig`, `FormSettings`, `SubmitConfig`, `SubmitAnswer`, `SubmitPayload`, `StepConfig`, `QuestionGroup`, `Question`, `QuestionOption`, `RangeValue`, `Condition`, `SimpleCondition`, `CompoundCondition`, `ConditionOperator`, `QuestionType`, `DisplayVariant`, `LayoutHint`, `InlineRenderMode` (deprecated), `TranslateFn`, `FormStateAdapter`, `FormStateController`, `FormStateOptions`, `FormCallbacks`
-- **Context keys**: `FORM_STATE_KEY`, `TRANSLATE_KEY`, `STEP_ID_KEY`
+- **Context keys**: `FORM_STATE_KEY`, `TRANSLATE_KEY`, `STEP_ID_KEY`, `FORM_ID_KEY` (the enclosing form's id prefix, a string)

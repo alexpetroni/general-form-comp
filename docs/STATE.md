@@ -940,3 +940,190 @@ in-place patch.
   synchronously after construction sees the empty state until `hydrate()`),
   and the optional `hydrate?()` on `FormStateController`.
 - Nothing deferred; nothing disagreed with.
+
+## PHASE-6 — Tooltip, per-instance ids, API cleanup
+
+**Closed by PHASE-6:** R-8 (tooltip half; the ARIA-state half was PHASE-3),
+R-9 (per-instance ids), R-10 (`inline` deprecated), R-11 (`TranslateFn`),
+R-23 (callback edges).
+
+### What changed
+
+- **Tooltip (R-8)**, `FieldLabel.svelte`: the info icon is a
+  `<button type="button">` named by the translated tooltip text
+  (`aria-label`, and `title` kept for hover) with `aria-expanded` and
+  `aria-controls` → a `<p>` description (`text-sm text-(--form-muted)`)
+  rendered as a sibling after the label / legend. Click toggles it, Escape
+  on the button closes it. The description stays in the DOM with `hidden`
+  when closed so `aria-controls` always resolves; its id is
+  `${$props.id()}-tooltip`, unique per instance and stable across SSR and
+  hydration. Next to a `<label>` the marker and the button are rendered
+  *after* the label as siblings (order "Label * ⓘ", as the PHASE-3 review
+  asked), wrapped in one inline `<span>` — a direct child of the inputs'
+  `space-y-2` container would pick up its vertical margin and push the
+  inline-flex button off the baseline. Inside a `<legend>` both sit after the
+  legend text (a sibling would drop below the legend). The tooltip text is
+  therefore no longer part of a labelled control's accessible name; a
+  fieldset's name (from its legend) still includes it, exactly as before with
+  the `role="img"` span.
+- **Per-instance ids (R-9)**: `MultiStepForm` creates `const formId =
+  $props.id()` and provides it through the new exported `FORM_ID_KEY`
+  (`types.ts`, barrel). `utils.ts` gained three internal helpers (not in the
+  barrel): `scopedId(formId, id)` → `<formId>-<id>` or the raw id without a
+  form, `groupElementId(base)` → `formcomp-group-<base>`, `groupAlertId(base)`
+  → `formcomp-group-<base>-alert`. `QuestionRenderer` derives `name =
+  scopedId(formId, question.id)` for every input (so input ids, option ids
+  `<name>-<value>`, the range `<name>-from/-to` ids, the consent id and every
+  radio `name` are prefixed). `LikertGroup` uses the same base for the radio
+  `name` and the statement id `formcomp-likert-<base>-statement`.
+  `GroupRenderer` passes `wrapperId = scopedId(formId, group.id)` to
+  `QuestionGroupWrapper` and derives `alertId` from it; the wrapper builds
+  both ids through the helpers. `handleNext` scrolls with
+  `rootEl.querySelector('#' + CSS.escape(groupElementId(scopedId(formId,
+  warningGroupId))))` — no `getElementById` is left in `MultiStepForm.svelte`.
+  Standalone components (no `FORM_ID_KEY` in context) keep the raw `name`.
+  `$props.id()` yields `s<n>` on the server (the client reuses it from the
+  `<!--$s<n>-->` marker while hydrating) and `c<n>` for client-only mounts.
+- **`inline` deprecated (R-10)**: `GroupRenderer` has one branch for
+  `individual` and `inline` (the two were identical since PHASE-3's round-1
+  fix). `types.ts` adds `export type InlineRenderMode = 'inline'` carrying the
+  `@deprecated` tag ("alias of `'individual'`; use `layout.columns`") and
+  `renderMode?: 'individual' | 'likert-batch' | InlineRenderMode` with a doc
+  comment; the alias is exported from the barrel (README Exports lists it as
+  deprecated) so the `.d.ts` references no private name. `sleep-assessment`
+  (3 groups) and `all-inputs` (2 groups) dropped `renderMode: 'inline'`; their
+  `layout.columns` grids are unchanged. README: renderMode table, LayoutHint
+  section and the two Full-example groups.
+- **`TranslateFn` (R-11)**: `(key: string) => string`; `useTranslate` and
+  every call site unchanged. README props table and i18n section say so and
+  note that a two-argument function with an optional second parameter is
+  still assignable.
+- **Callback edges (R-23)**, `MultiStepForm.svelte`: `goTo` reads the
+  controller's index before and after `goToStep` and fires `onStepChange`
+  only when they differ (the callback now receives the index the controller
+  actually landed on); `handleNext` calls `onStepComplete` once, right after
+  the validation passes, before the last-step / next-step branch.
+- **Dev route** `src/routes/dev/two-forms/+page.svelte`: two `MultiStepForm`
+  instances of `minimalConfig`, each with its own `createFormState(config,
+  { persist: false })`, inside two `<section aria-labelledby>` regions
+  ("Form A" / "Form B") so the test can scope by role and name. Not linked
+  from the gallery.
+- **Docs**: README (Question `tooltip` comment, new "Tooltips" and "DOM ids
+  and several forms on a page" subsections under Validation, the alert id in
+  "Required and invalid state", `FORM_ID_KEY` in Exports, project map: utils
+  helpers, FieldLabel, GroupRenderer, the dev route, the four new test
+  files); `types.ts` `tooltip` doc; CHANGELOG Unreleased — Fixed (tooltip,
+  callbacks), Changed (ids, `TranslateFn`), a new Deprecated section
+  (`inline`), Added (`FORM_ID_KEY`, `InlineRenderMode`, dev route, tests);
+  the PHASE-3 "Required and invalid state" entry now names the prefixed alert
+  id so the Unreleased block does not contradict itself.
+
+### Tests
+
+- `tests/tooltip.spec.ts` (all-inputs, step 1): the button named by the
+  tooltip is visible, `aria-expanded="false"`, carries the `title`, and its
+  `aria-controls` target is hidden; it is focusable; Enter shows the
+  description (text asserted twice: through `aria-controls` and by
+  `getByText`), sets `aria-expanded="true"`, focus stays on the button and
+  not in Name; Escape hides it; a second Enter opens, a third closes. Second
+  case: with "Ada" typed, a click opens the description, Name is neither
+  focused nor changed, `getByRole('textbox', { name: 'Name', exact: true })`
+  and `getByLabel('Name', { exact: true })` still resolve; a second click
+  closes.
+- `tests/two-forms.spec.ts` (`/dev/two-forms`): `getByLabel('Full name')`
+  has count 2 and each region resolves exactly one; typing in Form B leaves
+  Form A empty; clicking Form B's label focuses B's input, not A's; every
+  `[id]` in the document is unique (evaluated in the page, duplicates must be
+  `[]`); Submit on Form A → exactly one alert in the document, inside Form A,
+  A's input `aria-invalid` and `aria-describedby` = that alert's id, B's
+  input carries neither. Before the fix the first assertion already failed
+  (both labels resolved to the first input).
+- `tests/callbacks.spec.ts` (console capture of the example page's `Step …`
+  lines): conditional — an invalid Next logs nothing; a valid Next logs
+  exactly `Step completed: travel (index: 0)` then `Step changed: 0 → 2`.
+  all-inputs — the three steps log the expected five lines; at the summary,
+  Edit on the last step (the index the controller already has) logs nothing
+  (before the fix: `Step changed: 2 → 2`); Next back to the summary logs one
+  `Step completed`; Edit on the first step logs exactly `Step changed: 2 → 0`.
+- `tests/unit/translate-fn.test.ts`: `expectTypeOf<TranslateFn>().parameters
+  .toEqualTypeOf<[string]>()` (type-checked by svelte-check because `tests/`
+  is in the tsconfig — it failed the gate with "Property '1' is missing"
+  before the narrowing, commit `ed116f0`); rendered server-side the form
+  passes exactly one argument per call and translates step, group, label and
+  tooltip keys; a legacy `(key, params?)` function is assignable and works.
+- `tests/validation-aria.spec.ts`: only the header comment and the title /
+  comment of the home-page test changed (the group is no longer
+  `renderMode: 'inline'`); every assertion is untouched.
+
+### Decisions (and where they deviate from the phase text)
+
+- **Button outside the `<label>`.** The phase says "buttons are interactive
+  content; verify in the browser test", which reads as keeping it inside the
+  label and relying on the HTML rule that a label click on interactive
+  content does nothing. Placing it after the label (after the marker) keeps
+  the control's accessible name equal to the label text, avoids nested
+  interactive content, needs no browser exception, and gives the "Label * ⓘ"
+  order the PHASE-3 review deferred here. The browser test still proves the
+  activation never focuses or changes the input. For `<legend>` it stays
+  inside (after the marker) because a sibling renders below the legend.
+- **`aria-controls` target always present** (`hidden` when closed) rather
+  than `{#if open}`, so the reference never dangles.
+- **`InlineRenderMode` alias.** TypeScript cannot deprecate one member of a
+  string-literal union; the alias is the only place an `@deprecated` tag can
+  live, so it is exported (a new public type, listed in README Exports and
+  CHANGELOG Added). No `validateConfig` warning for `'inline'` was added —
+  not a deliverable, and config objects cannot be flagged by the type system
+  either; worth a backlog line if authors should be nudged at runtime.
+- **R-23 coverage.** The phase's conditional-example test cannot reach the
+  no-op path (an invalid Next never calls `goTo`); it is kept as the
+  characterization it asks for, and the real no-op — Edit on the summary for
+  the step the index already sits on, all-inputs — is asserted in the same
+  file. An out-of-range index from a custom controller takes the same branch
+  (`toIndex !== fromIndex`).
+- **`FieldLabel` uses `$props.id()` too** (for the description id) — the
+  simplest per-instance id that also works standalone; `forId` would not
+  cover the legend case.
+- Nothing deferred; nothing disagreed with.
+
+### Commits
+
+- `e6eb4fd` feat(demo): /dev/two-forms route
+- `d249992` test(e2e): tooltip button, two forms, callback edges (failing, R-8, R-9, R-23)
+- `be177b6` feat(a11y): tooltip button with a visible description (R-8)
+- `ac1cd90` feat(form): per-instance DOM ids through FORM_ID_KEY (R-9)
+- `45a6bd2` fix(form): onStepChange only on a real index change, onStepComplete once (R-23)
+- `991a4fd` refactor(group): deprecate renderMode 'inline', single branch, examples, README (R-10)
+- `ed116f0` test(types): TranslateFn single parameter (failing svelte-check, R-11)
+- `648ce76` refactor(types): TranslateFn is (key: string) => string (R-11)
+- docs: README / CHANGELOG / STATE (this commit)
+
+### Verification run (2026-09-04, project root)
+
+- `npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json
+  --fail-on-warnings` → 271 files, 0 errors, 0 warnings.
+- `npm run test:unit` → 9 files, 146 tests passed.
+- `npx playwright install chromium` (already present) and
+  `CI=1 npm run test:e2e` → 46 passed (25.3 s); the suite builds and serves
+  the demo on 4322 and stops it.
+- `npm run package` → succeeded (only the pre-existing `import.meta.env`
+  advisory); `dist/index.d.ts` exports `FORM_ID_KEY` and `InlineRenderMode`,
+  `dist/types.d.ts` has `TranslateFn = (key: string) => string` and the
+  `@deprecated` alias; no `$lib` / `$app` / `$examples` import in `dist/`.
+- Visual check: a `vite preview` on 4323 (stopped afterwards) and two
+  screenshots of the all-inputs Name field — closed: "Name * ⓘ"; open: the
+  focus ring on the button and the description on its own line between the
+  label and the input.
+
+### For the next phases
+
+- **PHASE-7 (release)**: carry into the release notes — Changed: per-instance
+  ids (anything that hard-coded `#<question id>` or
+  `#formcomp-group-<group id>` must select by label or read `FORM_ID_KEY`),
+  `TranslateFn` narrowed; Deprecated: `renderMode: 'inline'`; Added:
+  `FORM_ID_KEY`, `InlineRenderMode`, the `/dev/two-forms` route. The README
+  Exports list is complete.
+- Candidates for the backlog (not taken): a `validateConfig` warning for
+  `renderMode: 'inline'`; a fieldset's accessible name still includes its
+  tooltip text (the button sits inside the legend); `aria-describedby` from
+  a control to its tooltip description would have to be combined with the
+  alert id.

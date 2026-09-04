@@ -74,7 +74,7 @@ export interface Question {
 	label: string;
 	options?: QuestionOption[];
 	required?: boolean;
-	/** Extra help text shown as an info icon next to the label */
+	/** Help text behind an info button after the label — keyboard-reachable, it toggles a visible description; Escape closes it */
 	tooltip?: string;
 	min?: number;
 	max?: number;
