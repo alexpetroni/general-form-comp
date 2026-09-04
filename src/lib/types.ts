@@ -245,6 +245,15 @@ export interface FormStateController extends FormStateAdapter {
 	prevStep(): void;
 	goToStep(index: number): void;
 	/**
+	 * Apply persisted state. `MultiStepForm` calls it once from an effect
+	 * after mount, so a controller that restores answers from storage must do
+	 * it here rather than while it is constructed: the server has no storage
+	 * and renders the first step, and the first client render has to match it
+	 * for hydration to be clean. Must be idempotent. Optional so existing
+	 * controllers keep compiling; `createFormState` always implements it.
+	 */
+	hydrate?(): void;
+	/**
 	 * Clear every answer, return to the first step and drop the persisted
 	 * entry. `MultiStepForm` calls it after a successful submission so a reload
 	 * cannot resubmit the same answers. Optional so existing controllers keep
